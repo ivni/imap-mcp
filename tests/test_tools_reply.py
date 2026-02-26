@@ -43,7 +43,7 @@ class TestToolsReply:
         # Make tool decorator store and return the decorated function
         stored_tools = {}
         
-        def mock_tool_decorator():
+        def mock_tool_decorator(**kwargs):
             def decorator(func):
                 stored_tools[func.__name__] = func
                 return func
@@ -67,8 +67,19 @@ class TestToolsReply:
 
     @pytest.fixture
     def mock_context(self):
-        """Create a mock context for testing."""
+        """Create a mock context with elicitation support.
+
+        Default: user confirms all actions (accept + confirmed=True).
+        """
         context = MagicMock(spec=Context)
+
+        # Default elicitation: user accepts and confirms
+        accepted = MagicMock()
+        accepted.action = "accept"
+        accepted.data = MagicMock()
+        accepted.data.confirmed = True
+        context.elicit = AsyncMock(return_value=accepted)
+
         return context
 
     @pytest.mark.asyncio
@@ -237,3 +248,28 @@ class TestToolsReply:
                 imap_client.fetch_email.assert_called_once()
                 smtp_client.create_reply_mime.assert_called_once()
                 imap_client.save_draft_mime.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_draft_reply_tool_confirmation_declined(self, tools, mock_email, mock_context):
+        """Test that declining confirmation prevents draft creation."""
+        tools_dict, imap_client, smtp_client = tools
+        draft_reply_tool = tools_dict["draft_reply_tool"]
+
+        # Override elicit to return declined
+        declined = MagicMock()
+        declined.action = "decline"
+        mock_context.elicit = AsyncMock(return_value=declined)
+
+        with patch('imap_mcp.tools.get_client_from_context') as mock_get:
+            mock_get.return_value = imap_client
+            result = await draft_reply_tool(
+                folder="INBOX",
+                uid=1,
+                reply_body="reply text",
+                ctx=mock_context
+            )
+
+        assert result["status"] == "cancelled"
+        assert "not confirmed" in result["message"].lower()
+        imap_client.fetch_email.assert_not_called()
+        imap_client.save_draft_mime.assert_not_called()

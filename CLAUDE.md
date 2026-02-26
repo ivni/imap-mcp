@@ -72,6 +72,7 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 - Commits must reference issues: `refs #N`, `fixes #N`, or `closes #N`
 - PR body must include `Closes #[NUMBER]` for auto-close
 - Use `gh` (GitHub CLI) for all GitHub operations: issues, PRs, checks, releases
+- NEVER include `Co-Authored-By` lines or any AI tool mentions in commit messages
 - Full conventions: see `docs/COMMIT_CONVENTIONS.md`
 
 ## Known Technical Debt

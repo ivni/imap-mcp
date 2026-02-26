@@ -27,7 +27,7 @@ class TestTaskTools:
         # Make tool decorator store and return the decorated function
         stored_tools = {}
         
-        def mock_tool_decorator():
+        def mock_tool_decorator(**kwargs):
             def decorator(func):
                 stored_tools[func.__name__] = func
                 return func

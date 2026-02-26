@@ -4,19 +4,84 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Dict, List, Optional, Union, Any
+from typing import Any, Dict, List, Optional, Union
 
+from pydantic import BaseModel, Field
 
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp import Context
+from mcp.server.fastmcp import Context, FastMCP
+from mcp.types import ToolAnnotations
 
 from imap_mcp.imap_client import ImapClient
 from imap_mcp.resources import get_client_from_context, get_smtp_client_from_context
 
-from typing import Dict
-from datetime import datetime
-
 logger = logging.getLogger(__name__)
+
+
+class ConfirmAction(BaseModel):
+    """Schema for destructive action confirmation elicitation.
+
+    Only primitive types allowed per MCP elicitation spec.
+    """
+
+    confirmed: bool = Field(
+        description="Set to true to confirm the action, false to cancel"
+    )
+
+
+async def require_confirmation(
+    ctx: Context,
+    action: str,
+    folder: str,
+    uid: int,
+    *,
+    target_folder: str | None = None,
+) -> bool:
+    """Request user confirmation before a destructive action.
+
+    Uses MCP elicitation to present a confirmation dialog to the user.
+    Does NOT include email content, subject, or sender in the message
+    to prevent information leakage and prompt injection exploitation.
+
+    Args:
+        ctx: MCP context for elicitation
+        action: Description of the action (e.g., "delete", "move")
+        folder: Email folder name
+        uid: Email UID
+        target_folder: Target folder for move operations
+
+    Returns:
+        True if the user confirmed the action, False otherwise.
+    """
+    if os.environ.get("IMAP_MCP_SKIP_CONFIRMATION", "").lower() == "true":
+        logger.warning(
+            "Confirmation skipped for %s (IMAP_MCP_SKIP_CONFIRMATION=true)",
+            action,
+        )
+        return True
+
+    message = f"Confirm {action}: email UID {uid} in folder '{folder}'"
+    if target_folder:
+        message += f" -> '{target_folder}'"
+    message += "\n\nDo you want to proceed?"
+
+    try:
+        result = await ctx.elicit(
+            message=message,
+            schema=ConfirmAction,
+        )
+    except Exception:
+        logger.warning(
+            "Elicitation failed for %s, aborting for safety",
+            action,
+            exc_info=True,
+        )
+        return False
+
+    if result.action == "accept" and result.data is not None:
+        return result.data.confirmed
+
+    return False
+
 
 # Define the path for storing tasks
 TASKS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tasks.json")
@@ -72,18 +137,22 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         """
         return await check_calendar_availability(start_time, end_time, ctx)
     
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
     async def process_invite_email_tool(folder: str, uid: int, ctx: Context) -> Dict[str, Any]:
         """Processes a meeting invitation email: identifies invite, checks availability, drafts reply, saves draft.
-        
+
+        Requires user confirmation before processing.
+
         Args:
             folder: Email folder name
             uid: Email UID
             ctx: MCP context
-            
+
         Returns:
             Dictionary with processing results and status information
         """
+        if not await require_confirmation(ctx, "process invite email and save draft", folder, uid):
+            return {"status": "cancelled", "message": "Processing not confirmed by user"}
         return await process_invite_email(folder, uid, ctx)
     
     @mcp.tool()
@@ -103,12 +172,14 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         # Call the internal implementation
         return await _create_task_impl(description, ctx, due_date, priority)
     
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
     async def draft_reply_tool(folder: str, uid: int, reply_body: str, ctx: Context,
                            reply_all: bool = False, cc: Optional[List[str]] = None,
                            body_html: Optional[str] = None) -> Dict[str, Any]:
         """Creates a draft reply to an email and saves it to the drafts folder.
-        
+
+        Requires user confirmation before saving the draft.
+
         Args:
             folder: Email folder name
             uid: Email UID
@@ -117,34 +188,41 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             reply_all: Whether to reply to all recipients
             cc: Optional CC recipients
             body_html: Optional HTML version of the reply
-            
+
         Returns:
             Dictionary with status and the UID of the created draft
         """
+        if not await require_confirmation(ctx, "save draft reply", folder, uid):
+            return {"status": "cancelled", "message": "Draft reply not confirmed by user"}
         # Avoid recursion by calling the internal implementation
         return await _draft_reply_impl(folder, uid, reply_body, ctx, reply_all, cc, body_html)
     
     # Move email to a different folder
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
     async def move_email(
-        folder: str, 
-        uid: int, 
+        folder: str,
+        uid: int,
         target_folder: str,
         ctx: Context,
     ) -> str:
         """Move email to another folder.
-        
+
+        Requires user confirmation before moving.
+
         Args:
             folder: Source folder
             uid: Email UID
             target_folder: Target folder
             ctx: MCP context
-            
+
         Returns:
             Success message or error message
         """
+        if not await require_confirmation(ctx, "move", folder, uid, target_folder=target_folder):
+            return "Action cancelled: move not confirmed by user"
+
         client = get_client_from_context(ctx)
-        
+
         try:
             success = client.move_email(uid, folder, target_folder)
             if success:
@@ -245,24 +323,29 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             return f"Error: {e}"
     
     # Delete email
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
     async def delete_email(
         folder: str,
         uid: int,
         ctx: Context,
     ) -> str:
         """Delete email.
-        
+
+        Requires user confirmation before deleting.
+
         Args:
             folder: Folder name
             uid: Email UID
             ctx: MCP context
-            
+
         Returns:
             Success message or error message
         """
+        if not await require_confirmation(ctx, "delete", folder, uid):
+            return "Action cancelled: delete not confirmed by user"
+
         client = get_client_from_context(ctx)
-        
+
         try:
             success = client.delete_email(uid, folder)
             if success:
@@ -357,7 +440,7 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         return json.dumps(results, indent=2)
     
     # Process email interactive session
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
     async def process_email(
         folder: str,
         uid: int,
@@ -367,10 +450,11 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         target_folder: Optional[str] = None,
     ) -> str:
         """Process an email with specified action.
-        
+
         This is a higher-level tool that combines multiple actions and records
-        the decision for learning purposes.
-        
+        the decision for learning purposes. Destructive actions (delete, move)
+        require user confirmation.
+
         Args:
             folder: Folder name
             uid: Email UID
@@ -378,17 +462,26 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             notes: Optional notes about the decision
             target_folder: Target folder for move action
             ctx: MCP context
-            
+
         Returns:
             Success message or error message
         """
+        # Require confirmation for destructive actions
+        destructive_actions = {"delete", "move"}
+        if action.lower() in destructive_actions:
+            if not await require_confirmation(
+                ctx, action.lower(), folder, uid,
+                target_folder=target_folder if action.lower() == "move" else None,
+            ):
+                return f"Action cancelled: {action} not confirmed by user"
+
         client = get_client_from_context(ctx)
-        
+
         # Fetch the email first to have context for learning
         email_obj = client.fetch_email(uid, folder)
         if not email_obj:
             return f"Email with UID {uid} not found in folder {folder}"
-        
+
         # Process the action
         result = ""
         try:
@@ -423,7 +516,7 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             return f"Error: {e}"
 
     # Process meeting invite and generate a draft reply
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
     async def process_meeting_invite(
         folder: str,
         uid: int,
@@ -431,29 +524,39 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         availability_mode: str = "random",
     ) -> dict:
         """Process a meeting invite email and create a draft reply.
-        
-        This tool orchestrates the full workflow:
+
+        Requires user confirmation before processing. This tool orchestrates
+        the full workflow:
         1. Identifies if the email is a meeting invite
         2. Checks calendar availability for the meeting time
         3. Generates an appropriate reply (accept/decline)
         4. Creates a MIME message for the reply
         5. Saves the reply as a draft
-        
+
         Args:
             folder: Folder containing the invite email
             uid: UID of the invite email
             ctx: MCP context
-            availability_mode: Mode for availability check (random, always_available, 
+            availability_mode: Mode for availability check (random, always_available,
                               always_busy, business_hours, weekdays)
-            
+
         Returns:
             Dictionary with the processing result:
-              - status: "success", "not_invite", or "error"
+              - status: "success", "not_invite", "cancelled", or "error"
               - message: Description of the result
               - draft_uid: UID of the saved draft (if successful)
               - draft_folder: Folder where the draft was saved (if successful)
               - availability: Whether the time slot was available
         """
+        if not await require_confirmation(ctx, "process meeting invite and save draft", folder, uid):
+            return {
+                "status": "cancelled",
+                "message": "Meeting invite processing not confirmed by user",
+                "draft_uid": None,
+                "draft_folder": None,
+                "availability": None,
+            }
+
         from imap_mcp.workflows.invite_parser import identify_meeting_invite_details
         from imap_mcp.workflows.calendar_mock import check_mock_availability
         from imap_mcp.workflows.meeting_reply import generate_meeting_reply_content
@@ -478,7 +581,7 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                 return result
             
             # Step 2: Identify if it's a meeting invite
-            logger.info(f"Analyzing email for meeting invite details: {email_obj.subject}")
+            logger.info("Analyzing email UID %d in folder %s for meeting invite details", uid, folder)
             invite_result = identify_meeting_invite_details(email_obj)
             
             if not invite_result["is_invite"]:
@@ -489,7 +592,7 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             invite_details = invite_result["details"]
             
             # Step 3: Check calendar availability
-            logger.info(f"Checking calendar availability for meeting: {invite_details['subject']}")
+            logger.info("Checking calendar availability for meeting time slot")
             availability_result = check_mock_availability(
                 invite_details.get("start_time"),
                 invite_details.get("end_time"),
