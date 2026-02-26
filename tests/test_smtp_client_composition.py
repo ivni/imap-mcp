@@ -1,11 +1,14 @@
-"""Tests for SMTP client MIME composition functionality."""
+"""Tests for SMTP client MIME composition and connection verification."""
 
 import re
+import smtplib
 import pytest
 from datetime import datetime
+from unittest.mock import MagicMock, patch
 
+from imap_mcp.config import SmtpConfig
 from imap_mcp.models import Email, EmailAddress, EmailContent
-from imap_mcp.smtp_client import create_reply_mime
+from imap_mcp.smtp_client import create_reply_mime, verify_smtp_connection
 
 
 class TestCreateReplyMime:
@@ -177,3 +180,76 @@ class TestCreateReplyMime:
         lines = payload.split("\n")
         quoted_lines = [line for line in lines if line.startswith(">")]
         assert any("> Original message content" in line for line in quoted_lines)
+
+
+class TestVerifySmtpConnection:
+    """Tests for verify_smtp_connection function."""
+
+    @pytest.fixture
+    def tls_config(self) -> SmtpConfig:
+        """SMTP config with STARTTLS (port 587)."""
+        return SmtpConfig(
+            host="smtp.example.com",
+            port=587,
+            username="test@example.com",
+            password="password",
+            use_tls=True,
+        )
+
+    @pytest.fixture
+    def ssl_config(self) -> SmtpConfig:
+        """SMTP config with implicit SSL (port 465)."""
+        return SmtpConfig(
+            host="smtp.example.com",
+            port=465,
+            username="test@example.com",
+            password="password",
+            use_tls=False,
+        )
+
+    @patch("imap_mcp.smtp_client.smtplib.SMTP")
+    def test_verify_smtp_tls_success(self, mock_smtp_cls: MagicMock, tls_config: SmtpConfig) -> None:
+        """Test successful SMTP verification with STARTTLS."""
+        mock_server = MagicMock()
+        mock_smtp_cls.return_value = mock_server
+
+        result = verify_smtp_connection(tls_config)
+
+        assert result is True
+        mock_smtp_cls.assert_called_once_with("smtp.example.com", 587, timeout=10)
+        assert mock_server.ehlo.call_count == 2
+        mock_server.starttls.assert_called_once()
+        mock_server.login.assert_called_once_with("test@example.com", "password")
+        mock_server.quit.assert_called_once()
+
+    @patch("imap_mcp.smtp_client.smtplib.SMTP_SSL")
+    def test_verify_smtp_ssl_success(self, mock_smtp_ssl_cls: MagicMock, ssl_config: SmtpConfig) -> None:
+        """Test successful SMTP verification with implicit SSL."""
+        mock_server = MagicMock()
+        mock_smtp_ssl_cls.return_value = mock_server
+
+        result = verify_smtp_connection(ssl_config)
+
+        assert result is True
+        mock_smtp_ssl_cls.assert_called_once()
+        mock_server.ehlo.assert_called_once()
+        mock_server.login.assert_called_once_with("test@example.com", "password")
+        mock_server.quit.assert_called_once()
+
+    @patch("imap_mcp.smtp_client.smtplib.SMTP")
+    def test_verify_smtp_auth_failure(self, mock_smtp_cls: MagicMock, tls_config: SmtpConfig) -> None:
+        """Test SMTP verification fails on authentication error."""
+        mock_server = MagicMock()
+        mock_smtp_cls.return_value = mock_server
+        mock_server.login.side_effect = smtplib.SMTPAuthenticationError(535, b"Auth failed")
+
+        with pytest.raises(ConnectionError, match="SMTP connection verification failed"):
+            verify_smtp_connection(tls_config)
+
+    @patch("imap_mcp.smtp_client.smtplib.SMTP")
+    def test_verify_smtp_network_failure(self, mock_smtp_cls: MagicMock, tls_config: SmtpConfig) -> None:
+        """Test SMTP verification fails on network error."""
+        mock_smtp_cls.side_effect = OSError("Connection refused")
+
+        with pytest.raises(ConnectionError, match="SMTP connection verification failed"):
+            verify_smtp_connection(tls_config)

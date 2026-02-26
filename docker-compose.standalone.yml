@@ -1,0 +1,10 @@
+# Standalone override — run without Traefik reverse proxy.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.standalone.yml up --build
+services:
+  imap-mcp:
+    ports:
+      - "8010:8010"
+
+networks:
+  proxy:
+    external: false

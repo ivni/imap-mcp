@@ -10,7 +10,6 @@ import imapclient
 
 from imap_mcp.config import ImapConfig
 from imap_mcp.models import Email
-from imap_mcp.oauth2 import get_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -47,25 +46,7 @@ class ImapClient:
                 ssl=self.config.use_ssl,
             )
             
-            # Use OAuth2 for Gmail if configured
-            if self.config.requires_oauth2:
-                logger.info(f"Using OAuth2 authentication for {self.config.host}")
-                
-                # Get fresh access token
-                if not self.config.oauth2:
-                    raise ValueError("OAuth2 configuration is required for Gmail")
-                
-                access_token, _ = get_access_token(self.config.oauth2)
-                
-                # Authenticate with XOAUTH2
-                # Use the oauth_login method which properly formats the XOAUTH2 string
-                self.client.oauth2_login(self.config.username, access_token)
-            else:
-                # Standard password authentication
-                if not self.config.password:
-                    raise ValueError("Password is required for authentication")
-                    
-                self.client.login(self.config.username, self.config.password)
+            self.client.login(self.config.username, self.config.password)
                 
             self.connected = True
             logger.info(f"Connected to IMAP server {self.config.host}")
@@ -74,6 +55,24 @@ class ImapClient:
             logger.error(f"Failed to connect to IMAP server: {e}")
             raise ConnectionError(f"Failed to connect to IMAP server: {e}")
     
+    def verify_connection(self) -> List[str]:
+        """Verify the IMAP connection is working by checking server capabilities.
+
+        Returns:
+            List of server capabilities.
+
+        Raises:
+            ConnectionError: If verification fails.
+        """
+        try:
+            capabilities = self.get_capabilities()
+            logger.info("IMAP connection verified (%d capabilities)", len(capabilities))
+            logger.debug("IMAP capabilities: %s", capabilities)
+            return capabilities
+        except Exception as e:
+            self.connected = False
+            raise ConnectionError(f"IMAP connection verification failed: {e}")
+
     def disconnect(self) -> None:
         """Disconnect from IMAP server."""
         if self.client:
@@ -576,13 +575,6 @@ class ImapClient:
         """
         self.ensure_connected()
         folders = self.list_folders(refresh=True)
-        
-        # Check for Gmail's special folders structure
-        if self.config.host and "gmail" in self.config.host.lower():
-            gmail_drafts = [f for f in folders if f.lower().endswith("/drafts")]
-            if gmail_drafts:
-                logger.debug(f"Using Gmail drafts folder: {gmail_drafts[0]}")
-                return gmail_drafts[0]
         
         # Look for standard drafts folder names (case-insensitive)
         drafts_folder_names = ["Drafts", "Draft", "Brouillons", "Borradores", "Entwürfe"]

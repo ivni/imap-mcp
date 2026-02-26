@@ -16,104 +16,101 @@ load_dotenv()
 
 
 @dataclass
-class OAuth2Config:
-    """OAuth2 configuration for IMAP authentication."""
-    
-    client_id: str
-    client_secret: str
-    refresh_token: Optional[str] = None
-    access_token: Optional[str] = None
-    token_expiry: Optional[int] = None
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Optional["OAuth2Config"]:
-        """Create OAuth2 configuration from dictionary."""
-        if not data:
-            return None
-            
-        # OAuth2 credentials can be specified in environment variables
-        client_id = data.get("client_id") or os.environ.get("GMAIL_CLIENT_ID")
-        client_secret = data.get("client_secret") or os.environ.get("GMAIL_CLIENT_SECRET")
-        refresh_token = data.get("refresh_token") or os.environ.get("GMAIL_REFRESH_TOKEN")
-        
-        if not client_id or not client_secret:
-            return None
-            
-        return cls(
-            client_id=client_id,
-            client_secret=client_secret,
-            refresh_token=refresh_token,
-            access_token=data.get("access_token"),
-            token_expiry=data.get("token_expiry"),
-        )
-
-
-@dataclass
 class ImapConfig:
     """IMAP server configuration."""
-    
+
     host: str
     port: int
     username: str
-    password: Optional[str] = None
-    oauth2: Optional[OAuth2Config] = None
+    password: str
     use_ssl: bool = True
-    
-    @property
-    def is_gmail(self) -> bool:
-        """Check if this is a Gmail configuration."""
-        return self.host.endswith("gmail.com") or self.host.endswith("googlemail.com")
-    
-    @property
-    def requires_oauth2(self) -> bool:
-        """Check if this configuration requires OAuth2."""
-        return self.is_gmail and self.oauth2 is not None
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ImapConfig":
-        """Create configuration from dictionary."""
-        # Create OAuth2 config if present
-        oauth2_config = OAuth2Config.from_dict(data.get("oauth2", {}))
-        
-        # Password can be specified in environment variable
-        password = data.get("password") or os.environ.get("IMAP_PASSWORD")
-        
-        # For Gmail, we need either password (for app-specific password) or OAuth2 credentials
-        host = data.get("host", "")
-        is_gmail = host.endswith("gmail.com") or host.endswith("googlemail.com")
-        
-        if is_gmail and not oauth2_config and not password:
-            raise ValueError(
-                "Gmail requires either an app-specific password or OAuth2 credentials"
+        """Create configuration from dictionary.
+
+        Password is resolved exclusively from the IMAP_PASSWORD environment
+        variable. The 'password' key in config dict is ignored for security.
+        """
+        if data.get("password"):
+            logger.warning(
+                "Ignoring 'password' in IMAP config — "
+                "use IMAP_PASSWORD environment variable instead"
             )
-        elif not is_gmail and not password:
+
+        password = os.environ.get("IMAP_PASSWORD")
+        if not password:
             raise ValueError(
-                "IMAP password must be specified in config or IMAP_PASSWORD environment variable"
+                "IMAP password must be specified via IMAP_PASSWORD environment variable"
             )
-        
+
         return cls(
             host=data["host"],
             port=data.get("port", 993 if data.get("use_ssl", True) else 143),
             username=data["username"],
             password=password,
-            oauth2=oauth2_config,
             use_ssl=data.get("use_ssl", True),
+        )
+
+
+@dataclass
+class SmtpConfig:
+    """SMTP server configuration."""
+
+    host: str
+    port: int
+    username: str
+    password: str
+    use_tls: bool = True
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "SmtpConfig":
+        """Create configuration from dictionary.
+
+        Password is resolved exclusively from the SMTP_PASSWORD environment
+        variable. The 'password' key in config dict is ignored for security.
+        """
+        if data.get("password"):
+            logger.warning(
+                "Ignoring 'password' in SMTP config — "
+                "use SMTP_PASSWORD environment variable instead"
+            )
+
+        password = os.environ.get("SMTP_PASSWORD") or os.environ.get("IMAP_PASSWORD")
+        if not password:
+            raise ValueError(
+                "SMTP password must be specified via SMTP_PASSWORD "
+                "(or IMAP_PASSWORD) environment variable"
+            )
+
+        return cls(
+            host=data["host"],
+            port=data.get("port", 587 if data.get("use_tls", True) else 465),
+            username=data["username"],
+            password=password,
+            use_tls=data.get("use_tls", True),
         )
 
 
 @dataclass
 class ServerConfig:
     """MCP server configuration."""
-    
+
     imap: ImapConfig
     allowed_folders: Optional[List[str]] = None
-    
+    smtp: Optional[SmtpConfig] = None
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ServerConfig":
         """Create configuration from dictionary."""
+        smtp_config = None
+        if "smtp" in data:
+            smtp_config = SmtpConfig.from_dict(data["smtp"])
+
         return cls(
             imap=ImapConfig.from_dict(data.get("imap", {})),
             allowed_folders=data.get("allowed_folders"),
+            smtp=smtp_config,
         )
 
 
@@ -137,7 +134,7 @@ def load_config(config_path: Optional[str] = None) -> ServerConfig:
         Path("~/.config/imap-mcp/config.yaml"),
         Path("/etc/imap-mcp/config.yaml"),
     ]
-    
+
     # Load from specified path or try default locations
     config_data = {}
     if config_path:
@@ -155,7 +152,7 @@ def load_config(config_path: Optional[str] = None) -> ServerConfig:
                     config_data = yaml.safe_load(f) or {}
                 logger.info(f"Loaded configuration from {expanded_path}")
                 break
-    
+
     # If environment variables are set, they take precedence
     if not config_data:
         logger.info("No configuration file found, using environment variables")
@@ -163,20 +160,33 @@ def load_config(config_path: Optional[str] = None) -> ServerConfig:
             raise ValueError(
                 "No configuration file found and IMAP_HOST environment variable not set"
             )
-        
+
         config_data = {
             "imap": {
                 "host": os.environ.get("IMAP_HOST"),
                 "port": int(os.environ.get("IMAP_PORT", "993")),
                 "username": os.environ.get("IMAP_USERNAME"),
-                "password": os.environ.get("IMAP_PASSWORD"),
                 "use_ssl": os.environ.get("IMAP_USE_SSL", "true").lower() == "true",
             }
         }
-        
+
         if os.environ.get("IMAP_ALLOWED_FOLDERS"):
             config_data["allowed_folders"] = os.environ.get("IMAP_ALLOWED_FOLDERS").split(",")
-    
+
+        # Build SMTP config from env vars, falling back to IMAP values
+        smtp_host = os.environ.get("SMTP_HOST") or os.environ.get("IMAP_HOST")
+        smtp_username = os.environ.get("SMTP_USERNAME") or os.environ.get("IMAP_USERNAME")
+        # SMTP_PASSWORD is resolved in SmtpConfig.from_dict() from env var;
+        # also check IMAP_PASSWORD fallback to decide whether to create SMTP config
+        smtp_password = os.environ.get("SMTP_PASSWORD") or os.environ.get("IMAP_PASSWORD")
+        if smtp_host and smtp_username and smtp_password:
+            config_data["smtp"] = {
+                "host": smtp_host,
+                "port": int(os.environ.get("SMTP_PORT", "587")),
+                "username": smtp_username,
+                "use_tls": os.environ.get("SMTP_USE_TLS", "true").lower() == "true",
+            }
+
     # Create config object
     try:
         return ServerConfig.from_dict(config_data)

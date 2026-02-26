@@ -19,28 +19,32 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.dist-info/
 
 # Coverage
 .coverage
 .coverage.*
+coverage.json
 coverage_data/
 htmlcov/
 .tox/
 .nox/
 .hypothesis/
 .pytest_cache/
+.ruff_cache/
 
 # Virtual environment
 venv/
 env/
 ENV/
 .env*
+!.env.example
 .venv
-uv.lock
 
-# IDE
+# IDE / AI tools
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 *~
@@ -57,19 +61,8 @@ credentials.json
 # Configuration
 config.yaml*
 
-# Resources 
-# Exclude all files in resources by default
+# Security audit (local only)
+docs/SECURITY_ISSUES.md
+
+# Resources
 resources/
-reference_github/
-mcp-cli/
-
-
-
-# Exclude any sensitive files that might be in resources even if they match above patterns
-#*secret*
-#*key*
-#*credential*
-#*password*
-
-# Secret Design Ideas
-# reference/

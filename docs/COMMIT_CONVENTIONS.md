@@ -67,6 +67,11 @@ Added tests for connection errors and timeouts. Coverage now at 95%.
 Refs #22
 ```
 
+## AI Attribution
+
+- NEVER mention "Claude", "AI", "LLM", or any AI assistant name in commit messages, PR titles, or PR descriptions
+- Commits must read as if written by a human developer
+
 ## Pull Requests
 
 When creating pull requests:

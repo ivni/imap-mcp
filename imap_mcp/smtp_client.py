@@ -2,15 +2,56 @@
 
 import email.utils
 import logging
+import smtplib
+import ssl
 from datetime import datetime
 from email.message import EmailMessage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import List, Optional
 
+from imap_mcp.config import SmtpConfig
 from imap_mcp.models import Email, EmailAddress
 
 logger = logging.getLogger(__name__)
+
+
+def verify_smtp_connection(config: SmtpConfig) -> bool:
+    """Verify SMTP server connectivity and authentication.
+
+    Connects to the SMTP server, performs EHLO, optionally STARTTLS,
+    authenticates, and disconnects.
+
+    Args:
+        config: SMTP server configuration.
+
+    Returns:
+        True if verification succeeds.
+
+    Raises:
+        ConnectionError: If the SMTP connection or authentication fails.
+    """
+    try:
+        if config.use_tls:
+            # Port 587 — STARTTLS
+            server = smtplib.SMTP(config.host, config.port, timeout=10)
+            server.ehlo()
+            server.starttls(context=ssl.create_default_context())
+            server.ehlo()
+        else:
+            # Port 465 — implicit SSL
+            server = smtplib.SMTP_SSL(
+                config.host, config.port, timeout=10,
+                context=ssl.create_default_context(),
+            )
+            server.ehlo()
+
+        server.login(config.username, config.password)
+        server.quit()
+        logger.info("SMTP connection verified (%s:%d)", config.host, config.port)
+        return True
+    except Exception as e:
+        raise ConnectionError(f"SMTP connection verification failed: {e}")
 
 
 def create_reply_mime(

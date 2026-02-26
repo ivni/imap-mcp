@@ -1,218 +1,87 @@
-# IMAP MCP Server Development Guide
+# IMAP MCP Server
 
-> **Important**: Before starting any development task, first consult the [DOCUMENTATION_CATALOG.md](./DOCUMENTATION_CATALOG.md) file to identify the most relevant documentation for your task. This catalog provides a comprehensive overview of all documentation files in the project.
+Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any IMAP server, not tied to any specific provider. Python 3.13+, FastMCP framework, imapclient library.
 
-## Environment Setup and Build Commands with `uv`
-- Create virtual environment: `uv venv`
-- Activate virtual environment: `source .venv/bin/activate` (Unix/macOS) or `.venv\Scripts\activate` (Windows)
-- Install dependencies: `uv pip install -e ".[dev]"`
-- Install specific packages: `uv add package_name`
-- Run commands within the environment: `uv run command [args]`
+## Security Rules
 
-### Package Management
-   - ONLY use uv, NEVER pip
-   - Installation: `uv add package`
-   - Running tools: `uv run tool`
-   - Upgrading: `uv add --dev package --upgrade-package package`
-   - FORBIDDEN: `uv pip install`, `@latest` syntax
-   - FORBIDDEN: `uv run python ...`
+- NEVER log email content, subjects, sender addresses, or credentials at any log level
+- NEVER use f-strings or string formatting to build IMAP commands — use imapclient's parameterized API to prevent IMAP injection
+- NEVER store secrets (passwords) in code, sample configs, or test fixtures — use environment variables only
+- Passwords ONLY from environment variables (`IMAP_PASSWORD`, `SMTP_PASSWORD`) — `config.yaml` password field is ignored with a warning
+- NEVER commit files matching: `config.yaml*`, `.env*`
+- MUST validate all MCP tool input parameters:
+  - Folder names checked against `allowed_folders` when configured
+  - UIDs must be positive integers
+  - Search criteria must use the whitelist pattern (see `tools.py` search_criteria_map)
+- MUST enforce `allowed_folders` in ALL code paths, including `search_emails` with `folder=None`
+- MUST keep TLS certificate verification enabled; support explicit custom CA bundle config, never silently disable verification
+- MUST require confirmation for destructive tools (delete, move, send) — design for prompt injection resistance
 
-## Build and Test Commands
-- Install dependencies: `uv pip install -e ".[dev]"`
+## Commands
+
+- Install: `uv sync --extra dev`
 - Run all tests: `uv run pytest`
-- Run single test: `uv run pytest tests/test_file.py::TestClass::test_function -v`
-- Run with coverage: `uv run pytest --cov`
-- Run server: `uv run python -m imap_mcp.server --config /path/to/config.yaml`
-- Development mode: `uv run python -m imap_mcp.server --dev`
-- One-line execution with dependencies: `uvx run -m imap_mcp.server --config /path/to/config.yaml`
+- Run single test: `uv run pytest tests/test_file.py::TestClass::test_func -v`
+- Test with coverage: `uv run pytest --cov=imap_mcp`
+- Skip integration tests: `uv run pytest --skip-integration`
+- Run server (HTTP): `uv run python -m imap_mcp.server --transport streamable-http`
+- Docker build: `docker compose up --build`
+- Docker standalone: `docker compose -f docker-compose.yml -f docker-compose.standalone.yml up --build`
+- Docker dev: `docker compose --profile dev up imap-mcp-dev --build`
+- Package management: ONLY `uv add <package>` — FORBIDDEN: `pip install`, `@latest` syntax
 
-## Code Style Guidelines
-- Use Black with 88 character line length
-- Imports: Use isort with Black profile
-- Types: All functions must have type hints (mypy enforces this)
-- Naming: snake_case for variables/functions, PascalCase for classes
-- Error handling: Use specific exceptions and provide helpful messages
-- Documentation: Write docstrings for all classes and methods
-- Testing: Follow TDD pattern (write tests before implementation)
-- Project structure follows the standard Python package layout
+## Architecture
 
-## Task Workflow
-When working on tasks from GitHub Issues, follow this workflow:
+- `imap_mcp/server.py` — FastMCP server entry point, lifespan connection management
+- `imap_mcp/config.py` — YAML + env var config (ImapConfig, ServerConfig); passwords only from env vars
+- `imap_mcp/imap_client.py` — IMAP operations (connect, search, fetch, move, delete, threading)
+- `imap_mcp/tools.py` — MCP tool registrations (search, delete, move, flag, draft, meeting workflow)
+- `imap_mcp/resources.py` — MCP resource registrations (folders, list, search, email content)
+- `imap_mcp/models.py` — Data models: Email, EmailAddress, EmailContent, EmailAttachment
+- `imap_mcp/auth.py` — JWT authentication: OIDC provider verification via JWKS (RS256)
+- `imap_mcp/smtp_client.py` — Reply composition with MIME (plain text + HTML)
+- `imap_mcp/workflows/` — Meeting invite parsing, calendar mock, reply generation
 
-1. **Task Analysis**:
-   - Read and understand the issue requirements
-   - Assess if the issue needs to be broken down into smaller subtasks
-   - If needed, create separate issues for subtasks and link them to the parent issue
-   - Analyze existing labels and make sure the issue has the correct priority and status labels
+## Authentication
 
-2. **Starting Work on an Issue**:
-   - Create a branch that references the issue number: `git checkout -b feature/issue-[NUMBER]-[SHORT_DESCRIPTION]`
-   - Make an initial commit that references the issue: `git commit -m "refs #[NUMBER]: Start implementing [FEATURE]"`
-   - The automated status tracking system will detect this commit and change the issue status to "in-progress"
+- `streamable-http` transport requires OIDC JWT authentication — no unauthenticated access
+- `stdio` transport has no auth (protected by OS process isolation)
+- MCP server acts as **Resource Server** only — validates JWT tokens, does not serve OAuth endpoints
+- Provider-agnostic: works with any OIDC provider (Authentik, Keycloak, Auth0, etc.)
+- NEVER hardcode auth server URLs — all URLs come from environment variables
+- Environment variables:
+  - `OIDC_ISSUER_URL` (required for HTTP) — OIDC provider issuer URL
+  - `OIDC_JWKS_URI` (optional) — explicit JWKS endpoint, skips OIDC discovery
+  - `OIDC_AUDIENCE` (optional) — expected JWT audience claim
+  - `MCP_RESOURCE_SERVER_URL` (optional) — public URL of MCP server for OAuth metadata
 
-3. **Test-Driven Development**:
-   - Write tests first that verify the desired functionality
-   - Implement the feature until all tests pass
-   - Refactor code while maintaining test coverage
-   - Run full test suite to check for regressions: `uv run pytest --cov=imap_mcp`
+## Code Conventions
 
-4. **Completing an Issue**:
-   - Create a pull request that references the issue: `gh pr create --title "[TITLE]" --body "Closes #[NUMBER]"`
-   - The body should include "Closes #[NUMBER]" or "Fixes #[NUMBER]" to automatically close the issue when merged
-   - The automated status tracking system will update the issue status to "completed" when the PR is merged
-   - It will also automatically adjust priorities of remaining tasks
+- Type hints required on all functions (mypy strict mode in pyproject.toml)
+- Docstrings on all public classes and methods (Google style)
+- Use specific exceptions with helpful messages, never bare `except:`
+- TDD: write tests before implementation
+- New MCP tools: register in `tools.py` via `register_tools()`, use `@mcp.tool()` decorator
+- New MCP resources: register in `resources.py` via `register_resources()`
+- Provider-agnostic: do not hardcode provider-specific logic; use IMAP capabilities for feature detection, not hostname checks
+- When changing code, update affected documentation (README.md, this CLAUDE.md, docs/, docstrings) in the same PR to keep docs in sync with the codebase
 
-5. **GitHub Issue Management Commands**:
-   - View all issues: `gh issue list`
-   - View specific issue: `gh issue view [NUMBER]`
-   - Filter issues by label: `gh issue list --label "priority:1"`
-   - Create new issue: `gh issue create` (interactive) or:
-     `gh issue create --title "Title" --body "Description" --label "priority:X" --label "status:prioritized"`
-   - Edit issue: `gh issue edit [NUMBER] --add-label "priority:1" --remove-label "priority:2"`
+## Git Workflow
 
-6. **Documentation**:
-   - Update docstrings in implementation
-   - Update README.md or other docs if needed
-   - Add new commands or processes to this CLAUDE.md file if relevant
+- Branch naming: `feature/issue-[NUMBER]-[short-description]`
+- Commits must reference issues: `refs #N`, `fixes #N`, or `closes #N`
+- PR body must include `Closes #[NUMBER]` for auto-close
+- Use `gh` (GitHub CLI) for all GitHub operations: issues, PRs, checks, releases
+- Full conventions: see `docs/COMMIT_CONVENTIONS.md`
 
-7. **Commit Conventions**:
-   - Use these prefixes in commit messages to trigger automatic status changes:
-     - `refs #X`: References the issue without changing status
-     - `implements #X`: Indicates implementation progress
-     - `fixes #X`: Indicates the issue is fixed (used in final commits)
-     - `closes #X`: Same as fixes, will close the issue when merged
-   - Always include the issue number with the # prefix
-   - Add descriptive message after the issue reference
+## Known Technical Debt
 
-## Issue Status Definitions
+- `allowed_folders` bypass: `search_emails` with `folder=None` ignores folder restrictions
+- No input sanitization on folder names passed to IMAP commands (injection risk)
 
-GitHub Issues have the following status labels:
+## Testing
 
-- **status:prioritized**: Task has been assigned a priority, not yet started
-- **status:in-progress**: Work on the task has begun (automatic when commits reference issue)
-- **status:completed**: Implementation is finished (automatic when PR with "fixes/closes" is merged)
-- **status:reviewed**: Task has been reviewed (currently manual update)
-- **status:archived**: Task has been archived (currently manual update)
-
-Priority labels follow the format `priority:X` where X is a number starting from 1 (highest priority).
-
-## Integration Testing
-
-Integration tests verify that the IMAP MCP server works correctly with real email services. These tests require valid credentials and network connectivity to external services.
-
-### Environment Setup for Integration Tests
-
-1. **Required Environment Variables**:
-   - `TEST_IMAP_HOST`: IMAP server hostname (e.g., `imap.gmail.com`)
-   - `TEST_SMTP_HOST`: SMTP server hostname (e.g., `smtp.gmail.com`)
-   - `TEST_EMAIL`: Email address for testing
-   - `TEST_PASSWORD`: Email password or app password
-
-2. **Set Up Environment Variables**:
-   ```bash
-   # For temporary use in current session
-   export TEST_IMAP_HOST=imap.gmail.com
-   export TEST_SMTP_HOST=smtp.gmail.com
-   export TEST_EMAIL=your-test-email@gmail.com
-   export TEST_PASSWORD=your-app-password
-   
-   # Or add to your .env file for persistence (make sure it's in .gitignore)
-   echo "TEST_IMAP_HOST=imap.gmail.com" >> .env
-   echo "TEST_SMTP_HOST=smtp.gmail.com" >> .env
-   echo "TEST_EMAIL=your-test-email@gmail.com" >> .env
-   echo "TEST_PASSWORD=your-app-password" >> .env
-   ```
-
-### Refreshing OAuth2 Credentials
-
-OAuth2 tokens expire periodically. If integration tests fail with authentication errors, refresh your tokens before running tests:
-
-1. **Check if token refresh is needed**:
-   ```bash
-   uv run python -m imap_mcp.oauth2 check-token --config config.yaml
-   ```
-
-2. **Refresh the token if expired**:
-   ```bash
-   uv run python -m imap_mcp.auth_setup refresh-token --config config.yaml
-   ```
-
-3. **Generate a new token if refresh fails**:
-   ```bash
-   uv run python -m imap_mcp.auth_setup generate-token --config config.yaml
-   ```
-
-### Running Integration Tests
-
-1. **Run all tests including integration tests**:
-   ```bash
-   uv run pytest
-   ```
-
-2. **Run only integration tests**:
-   ```bash
-   uv run pytest tests/integration/
-   ```
-
-3. **Skip integration tests when necessary**:
-   ```bash
-   uv run pytest --skip-integration
-   ```
-
-4. **Run specific integration test**:
-   ```bash
-   uv run pytest tests/integration/test_gmail_integration.py::test_gmail_connect_oauth2
-   ```
-
-### Writing New Integration Tests
-
-When writing new integration tests:
-
-1. **Mark tests appropriately**: Use the `@pytest.mark.integration` decorator
-2. **Handle authentication errors gracefully**: Tests should fail clearly if credentials are invalid or expired
-3. **Clean up after tests**: Restore mailbox state after tests run (delete test messages, reset folders)
-4. **Isolate test data**: Use unique identifiers or timestamps for test data to avoid conflicts
-5. **Use test fixtures**: Leverage pytest fixtures for setup and teardown
-6. **Respect rate limits**: Add delays if necessary to avoid hitting service rate limits
-
-Example integration test structure:
-```python
-import pytest
-
-@pytest.mark.integration
-def test_some_integration_feature(gmail_client):
-    # Test implementation
-    result = gmail_client.some_operation()
-    assert result == expected_value
-
-## Development Efficiency Strategies
-
-When working with AI assistants or development tools that use credit-based systems, follow these practices to maximize efficiency:
-
-### Minimize Tool Use
-1. **Batch Commands**: Run fewer, more comprehensive commands rather than many small ones.
-   - Run all tests at once: `uv run pytest` instead of testing individual files sequentially
-   - Use coverage reports to identify issues in one pass: `uv run pytest --cov=imap_mcp`
-   
-2. **Strategic Command Execution**:
-   - Ask the user to run commands that will save many tool calls over time
-   - Use more verbose output flags (`-v`, `--verbose`) to get more information in a single command
-   - Run commands from the project root to avoid changing directories multiple times
-
-### Optimize Code Changes
-1. **Comprehensive Edits**:
-   - Make larger batches of related changes rather than incremental edits
-   - Fix similar issues across multiple files in a single edit when possible
-   - Update both implementation and test code together when they're closely related
-
-2. **Testing Strategy**:
-   - Write all tests before implementing features (true TDD approach)
-   - Run the full test suite after significant changes rather than testing incrementally
-   - Use test fixtures and parameterization to reduce test code duplication
-
-3. **Documentation First**:
-   - Document design decisions and architecture before implementation
-   - Update documentation immediately after code changes to maintain consistency
-   - Use clear, descriptive commit messages that reference issues
-
-These strategies improve development efficiency while maintaining code quality and comprehensive testing.
+- Unit tests mock imapclient; fixtures in `tests/conftest.py`
+- Integration tests require env vars: `TEST_IMAP_HOST`, `TEST_SMTP_HOST`, `TEST_EMAIL`, `TEST_PASSWORD`
+- Mark integration tests with `@pytest.mark.integration`; skip with `--skip-integration`
+- Run `uv run pytest --cov=imap_mcp` before every PR

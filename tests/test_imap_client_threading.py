@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from imapclient.response_types import SearchIds
 
-from imap_mcp.config import ImapConfig, OAuth2Config
+from imap_mcp.config import ImapConfig
 from imap_mcp.imap_client import ImapClient
 from imap_mcp.models import Email, EmailAddress, EmailAttachment, EmailContent
 
@@ -612,6 +612,53 @@ class TestImapClientThreading(unittest.TestCase):
         # Verify both encodings were handled properly
         assert "UTF-8 text with special chars" in thread_emails[0].content.text
         assert "Latin-1 text with special chars" in thread_emails[1].content.text
+
+
+class TestImapClientVerifyConnection(unittest.TestCase):
+    """Test cases for IMAP connection verification."""
+
+    def setUp(self) -> None:
+        """Set up test environment."""
+        self.config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        self.mock_client = MagicMock()
+
+        self.imapclient_patcher = patch("imap_mcp.imap_client.imapclient.IMAPClient")
+        self.mock_imapclient = self.imapclient_patcher.start()
+        self.mock_imapclient.return_value = self.mock_client
+
+        self.imap_client = ImapClient(self.config)
+        self.imap_client.connected = True
+        self.imap_client.client = self.mock_client
+
+    def tearDown(self) -> None:
+        """Clean up after tests."""
+        self.imapclient_patcher.stop()
+
+    def test_verify_connection_success(self) -> None:
+        """Test successful connection verification returns capabilities."""
+        self.mock_client.capabilities.return_value = [b"IMAP4rev1", b"IDLE", b"UIDPLUS"]
+
+        capabilities = self.imap_client.verify_connection()
+
+        assert len(capabilities) == 3
+        assert "IMAP4REV1" in capabilities
+        assert "IDLE" in capabilities
+        assert "UIDPLUS" in capabilities
+
+    def test_verify_connection_failure(self) -> None:
+        """Test connection verification failure raises ConnectionError."""
+        self.mock_client.capabilities.side_effect = Exception("Connection lost")
+
+        with pytest.raises(ConnectionError, match="IMAP connection verification failed"):
+            self.imap_client.verify_connection()
+
+        assert self.imap_client.connected is False
 
 
 if __name__ == "__main__":

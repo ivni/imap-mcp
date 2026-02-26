@@ -221,10 +221,7 @@ def test_get_unread_messages_invalid_params():
         client.get_unread_messages(limit=0)
 
 
-# This test requires a real Gmail connection, so we'll need to get the fixture from the other test file
 @pytest.mark.integration
-@pytest.mark.gmail
-@pytest.mark.oauth2
 def test_gmail_get_unread_messages(gmail_client):
     """Test getting unread messages from a real Gmail account."""
     # Fetch unread messages
