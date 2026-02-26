@@ -28,7 +28,7 @@ The IMAP MCP server is designed to work with Claude or any other MCP-compatible 
 * **Email Authentication**: Secure access to IMAP servers with various authentication methods
 * **Email Browsing**: List folders and messages with filtering options
 * **Email Content**: Read message contents including text, HTML, and attachments
-* **Email Actions**: Move, delete, mark as read/unread, flag messages
+* **Email Actions**: Move, delete, mark as read/unread, flag messages (destructive actions require user confirmation)
 * **Email Composition**: Draft and save replies to messages with proper formatting
   * Support for plain text and HTML replies
   * Reply-all functionality with CC support
@@ -145,6 +145,7 @@ This MCP server requires access to your email account, which contains sensitive 
 * Consider using app-specific passwords instead of your main account password
 * Limit folder access to only what's necessary for your use case
 * Review the permissions granted to the server in your email provider's settings
+* **Destructive action confirmation**: delete, move, draft reply, and meeting invite tools require explicit user confirmation via MCP Elicitation API before execution. Confirmation messages contain only action, UID, and folder — never email content (prompt injection defense). Set `IMAP_MCP_SKIP_CONFIRMATION=true` to bypass in trusted CI/automation environments only
 
 ## Project Roadmap
 

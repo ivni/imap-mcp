@@ -16,6 +16,7 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 - MUST enforce `allowed_folders` in ALL code paths, including `search_emails` with `folder=None`
 - MUST keep TLS certificate verification enabled; support explicit custom CA bundle config, never silently disable verification
 - MUST require confirmation for destructive tools (delete, move, send) — design for prompt injection resistance
+- `IMAP_MCP_SKIP_CONFIRMATION=true` bypasses confirmation — ONLY for trusted CI/automation, never in production with user-facing AI
 
 ## Commands
 
@@ -74,6 +75,11 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 - Use `gh` (GitHub CLI) for all GitHub operations: issues, PRs, checks, releases
 - NEVER include `Co-Authored-By` lines or any AI tool mentions in commit messages
 - Full conventions: see `docs/COMMIT_CONVENTIONS.md`
+
+## Issue Tracking
+
+- When you discover a bug, security issue, improvement opportunity, or technical debt during work — suggest the user create a GitHub issue for it (using `gh issue create`)
+- Exception: if the finding is directly related to the current task, fix it in place instead of creating a separate issue
 
 ## Known Technical Debt
 

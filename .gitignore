@@ -61,8 +61,5 @@ credentials.json
 # Configuration
 config.yaml*
 
-# Security audit (local only)
-docs/SECURITY_ISSUES.md
-
 # Resources
 resources/
