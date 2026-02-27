@@ -3,8 +3,7 @@
 import json
 import logging
 import os
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -83,8 +82,6 @@ async def require_confirmation(
     return False
 
 
-# Define the path for storing tasks
-TASKS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tasks.json")
 
 def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
     """Register MCP tools.
@@ -154,24 +151,7 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         if not await require_confirmation(ctx, "process invite email and save draft", folder, uid):
             return {"status": "cancelled", "message": "Processing not confirmed by user"}
         return await process_invite_email(folder, uid, ctx)
-    
-    @mcp.tool()
-    async def create_task(description: str, ctx: Context, due_date: Optional[str] = None, 
-                          priority: Optional[int] = None) -> str:
-        """Creates a new task and saves it to a local file.
-        
-        Args:
-            description: Task description
-            ctx: MCP context
-            due_date: Optional due date in ISO format
-            priority: Optional priority (1=high, 2=medium, 3=low)
-            
-        Returns:
-            Success message or error information
-        """
-        # Call the internal implementation
-        return await _create_task_impl(description, ctx, due_date, priority)
-    
+
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
     async def draft_reply_tool(folder: str, uid: int, reply_body: str, ctx: Context,
                            reply_all: bool = False, cc: Optional[List[str]] = None,
