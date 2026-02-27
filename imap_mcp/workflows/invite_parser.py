@@ -37,7 +37,7 @@ def identify_meeting_invite_details(email_obj: Email) -> Dict[str, Any]:
     if _is_meeting_invite(email_obj):
         result["is_invite"] = True
         result["details"] = _extract_meeting_details(email_obj)
-        logger.debug(f"Identified email as meeting invite: {email_obj.subject}")
+        logger.debug("Identified email as meeting invite (message_id=%s)", email_obj.message_id)
     
     return result
 

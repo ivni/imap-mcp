@@ -118,7 +118,7 @@ def _generate_accept_reply(
         "Best regards,"
     )
     
-    logger.debug(f"Generated accept reply for meeting: {subject}")
+    logger.debug("Generated accept reply for meeting invite")
     
     return {
         "reply_subject": reply_subject,
@@ -158,7 +158,7 @@ def _generate_decline_reply(
         "Best regards,"
     )
     
-    logger.debug(f"Generated decline reply for meeting: {subject}")
+    logger.debug("Generated decline reply for meeting invite")
     
     return {
         "reply_subject": reply_subject,
