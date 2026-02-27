@@ -20,6 +20,16 @@ services:
       - "traefik.http.routers.imap-mcp.tls.certresolver=letsencrypt"
       - "traefik.http.services.imap-mcp.loadbalancer.server.port=8010"
       - "traefik.docker.network=proxy"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
 
   imap-mcp-dev:
@@ -37,6 +47,16 @@ services:
     volumes:
       - ./imap_mcp:/app/imap_mcp:ro
     command: uv run python -m imap_mcp.server --debug
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     profiles:
       - dev
 
