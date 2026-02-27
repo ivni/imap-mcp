@@ -14,6 +14,8 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
   - UIDs must be positive integers
   - Search criteria must use the whitelist pattern (see `tools.py` search_criteria_map)
 - MUST enforce `allowed_folders` in ALL code paths, including `search_emails` with `folder=None`
+- When `allowed_folders` is not configured, defaults to INBOX-only access (principle of least privilege)
+- Set `allowed_folders: []` in config or `IMAP_ALLOWED_FOLDERS=""` to explicitly allow all folders
 - MUST keep TLS certificate verification enabled; support explicit custom CA bundle config, never silently disable verification
 - MUST require confirmation for destructive tools (delete, move, send) — design for prompt injection resistance
 - `IMAP_MCP_SKIP_CONFIRMATION=true` bypasses confirmation — ONLY for trusted CI/automation, never in production with user-facing AI
@@ -83,7 +85,7 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 
 ## Known Technical Debt
 
-- `allowed_folders` bypass: `search_emails` with `folder=None` ignores folder restrictions
+(none currently tracked)
 
 ## Testing
 

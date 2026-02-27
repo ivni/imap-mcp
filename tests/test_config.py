@@ -361,7 +361,7 @@ class TestServerConfig:
         assert config.allowed_folders == ["INBOX", "Sent"]
         assert config.smtp is None
 
-        # Test with minimal data (no allowed_folders)
+        # Test with minimal data (no allowed_folders) — defaults to INBOX
         minimal_data = {
             "imap": {
                 "host": "imap.example.com",
@@ -371,11 +371,76 @@ class TestServerConfig:
 
         config = ServerConfig.from_dict(minimal_data)
         assert config.imap.host == "imap.example.com"
-        assert config.allowed_folders is None
+        assert config.allowed_folders == ["INBOX"]
 
         # Test with empty dict — should fail because host is required
         with pytest.raises(KeyError):
             ServerConfig.from_dict({})
+
+    def test_from_dict_default_inbox_when_not_set(self, monkeypatch):
+        """Test that allowed_folders defaults to INBOX when key is absent."""
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+
+        data = {
+            "imap": {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+            }
+        }
+
+        config = ServerConfig.from_dict(data)
+        assert config.allowed_folders == ["INBOX"]
+
+    def test_from_dict_explicit_empty_means_unrestricted(self, monkeypatch):
+        """Test that allowed_folders: [] explicitly enables unrestricted access."""
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+
+        data = {
+            "imap": {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+            },
+            "allowed_folders": []
+        }
+
+        config = ServerConfig.from_dict(data)
+        assert config.allowed_folders is None
+
+    def test_from_dict_warning_when_not_configured(self, monkeypatch, caplog):
+        """Test that a warning is logged when allowed_folders is not configured."""
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+
+        data = {
+            "imap": {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+            }
+        }
+
+        import logging
+        with caplog.at_level(logging.WARNING, logger="imap_mcp.config"):
+            ServerConfig.from_dict(data)
+
+        assert "allowed_folders not configured" in caplog.text
+        assert "INBOX-only" in caplog.text
+
+    def test_from_dict_info_when_explicitly_empty(self, monkeypatch, caplog):
+        """Test that info is logged when allowed_folders is explicitly empty."""
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+
+        data = {
+            "imap": {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+            },
+            "allowed_folders": []
+        }
+
+        import logging
+        with caplog.at_level(logging.INFO, logger="imap_mcp.config"):
+            ServerConfig.from_dict(data)
+
+        assert "all folders accessible" in caplog.text
 
     def test_from_dict_with_smtp(self, monkeypatch):
         """Test creating ServerConfig with SMTP section."""
@@ -621,6 +686,62 @@ class TestLoadConfig:
         assert config.smtp.username == "smtp_user@example.com"
         assert config.smtp.password == "smtp_env_password"
         assert config.smtp.use_tls is False
+
+    def test_load_env_without_allowed_folders_defaults_to_inbox(self, monkeypatch):
+        """Test that missing IMAP_ALLOWED_FOLDERS defaults to INBOX."""
+        monkeypatch.setenv("IMAP_HOST", "imap.example.com")
+        monkeypatch.setenv("IMAP_PORT", "993")
+        monkeypatch.setenv("IMAP_USERNAME", "test@example.com")
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+        monkeypatch.delenv("IMAP_ALLOWED_FOLDERS", raising=False)
+
+        with patch("builtins.open", side_effect=FileNotFoundError):
+            config = load_config("nonexistent.yaml")
+
+        assert config.allowed_folders == ["INBOX"]
+
+    def test_load_env_empty_allowed_folders_means_unrestricted(self, monkeypatch):
+        """Test that IMAP_ALLOWED_FOLDERS='' enables unrestricted access."""
+        monkeypatch.setenv("IMAP_HOST", "imap.example.com")
+        monkeypatch.setenv("IMAP_PORT", "993")
+        monkeypatch.setenv("IMAP_USERNAME", "test@example.com")
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+        monkeypatch.setenv("IMAP_ALLOWED_FOLDERS", "")
+
+        with patch("builtins.open", side_effect=FileNotFoundError):
+            config = load_config("nonexistent.yaml")
+
+        assert config.allowed_folders is None
+
+    def test_load_env_allowed_folders_strips_whitespace(self, monkeypatch):
+        """Test that IMAP_ALLOWED_FOLDERS values are trimmed."""
+        monkeypatch.setenv("IMAP_HOST", "imap.example.com")
+        monkeypatch.setenv("IMAP_USERNAME", "test@example.com")
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+        monkeypatch.setenv("IMAP_ALLOWED_FOLDERS", " INBOX , Sent , Archive ")
+
+        with patch("builtins.open", side_effect=FileNotFoundError):
+            config = load_config("nonexistent.yaml")
+
+        assert config.allowed_folders == ["INBOX", "Sent", "Archive"]
+
+    def test_load_yaml_without_allowed_folders_defaults_to_inbox(self, monkeypatch, tmp_path):
+        """Test that YAML without allowed_folders key defaults to INBOX."""
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+
+        config_data = {
+            "imap": {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+            }
+        }
+
+        config_file = tmp_path / "config.yaml"
+        with open(config_file, "w") as f:
+            yaml.dump(config_data, f)
+
+        config = load_config(str(config_file))
+        assert config.allowed_folders == ["INBOX"]
 
     def test_invalid_config(self, monkeypatch, tmp_path):
         """Test error when config is invalid."""

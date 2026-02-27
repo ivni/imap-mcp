@@ -92,6 +92,9 @@ class SmtpConfig:
         )
 
 
+_ALLOWED_FOLDERS_UNSET = object()  # Sentinel: "allowed_folders" key absent from config
+
+
 @dataclass
 class ServerConfig:
     """MCP server configuration."""
@@ -102,14 +105,35 @@ class ServerConfig:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ServerConfig":
-        """Create configuration from dictionary."""
+        """Create configuration from dictionary.
+
+        When ``allowed_folders`` is absent from *data*, the server defaults to
+        INBOX-only access (principle of least privilege).  Set the key to an
+        empty list explicitly to allow unrestricted folder access.
+        """
         smtp_config = None
         if "smtp" in data:
             smtp_config = SmtpConfig.from_dict(data["smtp"])
 
+        raw_allowed = data.get("allowed_folders", _ALLOWED_FOLDERS_UNSET)
+        if raw_allowed is _ALLOWED_FOLDERS_UNSET:
+            resolved_allowed: Optional[List[str]] = ["INBOX"]
+            logger.warning(
+                "allowed_folders not configured — defaulting to INBOX-only access. "
+                "Set allowed_folders in config or IMAP_ALLOWED_FOLDERS env var. "
+                "Use empty list for unrestricted access."
+            )
+        elif isinstance(raw_allowed, list) and len(raw_allowed) == 0:
+            resolved_allowed = None
+            logger.info(
+                "allowed_folders set to empty list — all folders accessible"
+            )
+        else:
+            resolved_allowed = raw_allowed
+
         return cls(
             imap=ImapConfig.from_dict(data.get("imap", {})),
-            allowed_folders=data.get("allowed_folders"),
+            allowed_folders=resolved_allowed,
             smtp=smtp_config,
         )
 
@@ -170,8 +194,14 @@ def load_config(config_path: Optional[str] = None) -> ServerConfig:
             }
         }
 
-        if os.environ.get("IMAP_ALLOWED_FOLDERS"):
-            config_data["allowed_folders"] = os.environ.get("IMAP_ALLOWED_FOLDERS").split(",")
+        env_allowed = os.environ.get("IMAP_ALLOWED_FOLDERS")
+        if env_allowed is not None:
+            if env_allowed.strip() == "":
+                config_data["allowed_folders"] = []  # Explicit empty = unrestricted
+            else:
+                config_data["allowed_folders"] = [
+                    f.strip() for f in env_allowed.split(",")
+                ]
 
         # Build SMTP config from env vars, falling back to IMAP values
         smtp_host = os.environ.get("SMTP_HOST") or os.environ.get("IMAP_HOST")

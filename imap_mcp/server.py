@@ -55,6 +55,15 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict]:
         # Verify IMAP connection works (essential — fail startup if broken)
         imap_client.verify_connection()
 
+        # Log effective folder access policy
+        if config.allowed_folders:
+            logger.info(
+                "Folder access restricted to: %s",
+                ", ".join(config.allowed_folders),
+            )
+        else:
+            logger.info("Folder access: unrestricted (all folders)")
+
         # Build context with IMAP client and optional SMTP config
         context: Dict[str, Any] = {"imap_client": imap_client}
         if config.smtp:
@@ -167,7 +176,7 @@ def create_server(
         if config.allowed_folders:
             status["allowed_folders"] = list(config.allowed_folders)
         else:
-            status["allowed_folders"] = "All folders allowed"
+            status["allowed_folders"] = "All folders allowed (explicitly configured)"
 
         if config.smtp:
             status["smtp_host"] = config.smtp.host

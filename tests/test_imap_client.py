@@ -34,6 +34,32 @@ class TestImapClient:
         client = ImapClient(config, allowed_folders=allowed_folders)
         assert client.allowed_folders == set(allowed_folders)
 
+    def test_init_empty_list_becomes_empty_set(self):
+        """Test that allowed_folders=[] becomes set(), not None."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config, allowed_folders=[])
+        assert client.allowed_folders == set()
+        assert client.allowed_folders is not None
+
+    def test_is_folder_allowed_with_empty_set(self):
+        """Test that empty allowed_folders set rejects all folders."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config, allowed_folders=[])
+        assert client._is_folder_allowed("INBOX") is False
+        assert client._is_folder_allowed("Sent") is False
+
     def test_connect_success(self, mock_imap_client):
         """Test successful connection."""
         config = ImapConfig(

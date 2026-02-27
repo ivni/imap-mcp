@@ -27,10 +27,11 @@ class ImapClient:
         
         Args:
             config: IMAP configuration
-            allowed_folders: List of allowed folders (None means all folders)
+            allowed_folders: List of allowed folders. None means all folders are allowed.
+                An empty list means no folders are allowed.
         """
         self.config = config
-        self.allowed_folders = set(allowed_folders) if allowed_folders else None
+        self.allowed_folders = set(allowed_folders) if allowed_folders is not None else None
         self.client = None
         self.folder_cache: Dict[str, List[str]] = {}
         self.connected = False
