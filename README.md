@@ -146,6 +146,7 @@ This MCP server requires access to your email account, which contains sensitive 
 * Store email credentials securely using environment variables or secure credential storage
 * Consider using app-specific passwords instead of your main account password
 * Limit folder access to only what's necessary for your use case
+* **`.env` file loading is disabled by default** to prevent malicious `.env` files from overriding credentials in shared environments. Set `IMAP_MCP_LOAD_DOTENV=true` to opt in during local development. In Docker, use `env_file:` in docker-compose or pass env vars directly
 * Review the permissions granted to the server in your email provider's settings
 * **Destructive action confirmation**: delete, move, draft reply, and meeting invite tools require explicit user confirmation via MCP Elicitation API before execution. Confirmation messages contain only action, UID, and folder — never email content (prompt injection defense). Set `IMAP_MCP_SKIP_CONFIRMATION=true` to bypass in trusted CI/automation environments only
 * **Supply chain security**: All dependencies are pinned by hash in `uv.lock`. CI and Docker builds use `uv sync --frozen` to verify hashes, preventing package substitution attacks

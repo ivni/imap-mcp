@@ -18,6 +18,7 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 - Set `allowed_folders: []` in config or `IMAP_ALLOWED_FOLDERS=""` to explicitly allow all folders
 - MUST keep TLS certificate verification enabled; support explicit custom CA bundle config, never silently disable verification
 - MUST require confirmation for destructive tools (delete, move, send) — design for prompt injection resistance
+- `.env` file loading is disabled by default; `IMAP_MCP_LOAD_DOTENV=true` opts in — prevents malicious `.env` override in shared/containerized environments
 - `IMAP_MCP_SKIP_CONFIRMATION=true` bypasses confirmation — ONLY for trusted CI/automation, never in production with user-facing AI
 
 ## Commands

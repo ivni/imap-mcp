@@ -7,12 +7,25 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
-from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-# Load environment variables from .env file if it exists
-load_dotenv()
+
+def _maybe_load_dotenv() -> None:
+    """Load .env file only when explicitly opted in via IMAP_MCP_LOAD_DOTENV=true.
+
+    Unconditional .env loading is a security risk: an attacker with write
+    access to the working directory can plant a malicious .env file to
+    override credentials or redirect connections.
+    """
+    if os.environ.get("IMAP_MCP_LOAD_DOTENV", "").lower() == "true":
+        from dotenv import load_dotenv
+
+        load_dotenv()
+        logger.warning(
+            ".env file loaded (IMAP_MCP_LOAD_DOTENV=true) — "
+            "disable in production for security"
+        )
 
 
 @dataclass
@@ -151,6 +164,8 @@ def load_config(config_path: Optional[str] = None) -> ServerConfig:
         FileNotFoundError: If configuration file is not found
         ValueError: If configuration is invalid
     """
+    _maybe_load_dotenv()
+
     # Default locations to check for config file
     default_locations = [
         Path("config.yaml"),

@@ -1,12 +1,19 @@
 """Tests for the config module."""
 
+import os
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import yaml
 
-from imap_mcp.config import ImapConfig, ServerConfig, SmtpConfig, load_config
+from imap_mcp.config import (
+    ImapConfig,
+    ServerConfig,
+    SmtpConfig,
+    _maybe_load_dotenv,
+    load_config,
+)
 
 
 class TestImapConfig:
@@ -763,3 +770,38 @@ class TestLoadConfig:
             load_config(str(config_file))
 
         assert "Missing required configuration" in str(excinfo.value)
+
+
+class TestMaybeLoadDotenv:
+    """Tests for _maybe_load_dotenv opt-in .env loading."""
+
+    def test_not_loaded_when_env_var_unset(self, monkeypatch):
+        """Dotenv must NOT be loaded when IMAP_MCP_LOAD_DOTENV is absent."""
+        monkeypatch.delenv("IMAP_MCP_LOAD_DOTENV", raising=False)
+        with patch("imap_mcp.config.os.environ.get", wraps=os.environ.get):
+            with patch("dotenv.load_dotenv") as mock_load:
+                _maybe_load_dotenv()
+        mock_load.assert_not_called()
+
+    def test_loaded_when_env_var_true(self, monkeypatch):
+        """Dotenv must be loaded when IMAP_MCP_LOAD_DOTENV=true."""
+        monkeypatch.setenv("IMAP_MCP_LOAD_DOTENV", "true")
+        with patch("dotenv.load_dotenv") as mock_load:
+            _maybe_load_dotenv()
+        mock_load.assert_called_once()
+
+    def test_loaded_case_insensitive(self, monkeypatch):
+        """IMAP_MCP_LOAD_DOTENV should be case-insensitive."""
+        for value in ("True", "TRUE", "tRuE"):
+            monkeypatch.setenv("IMAP_MCP_LOAD_DOTENV", value)
+            with patch("dotenv.load_dotenv") as mock_load:
+                _maybe_load_dotenv()
+            mock_load.assert_called_once()
+
+    @pytest.mark.parametrize("value", ["false", "1", "yes", "on", ""])
+    def test_not_loaded_for_non_true_values(self, monkeypatch, value):
+        """Only the literal 'true' (case-insensitive) should trigger loading."""
+        monkeypatch.setenv("IMAP_MCP_LOAD_DOTENV", value)
+        with patch("dotenv.load_dotenv") as mock_load:
+            _maybe_load_dotenv()
+        mock_load.assert_not_called()
