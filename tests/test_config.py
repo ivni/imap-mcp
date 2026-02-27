@@ -1,6 +1,7 @@
 """Tests for the config module."""
 
 import os
+import ssl
 from pathlib import Path
 from unittest.mock import patch
 
@@ -12,8 +13,41 @@ from imap_mcp.config import (
     ServerConfig,
     SmtpConfig,
     _maybe_load_dotenv,
+    create_ssl_context,
     load_config,
 )
+
+
+class TestCreateSslContext:
+    """Tests for the create_ssl_context helper."""
+
+    def test_default_context_has_verification(self):
+        """Default context must have cert verification enabled."""
+        ctx = create_ssl_context()
+        assert ctx.check_hostname is True
+        assert ctx.verify_mode == ssl.CERT_REQUIRED
+
+    def test_custom_ca_bundle_loaded(self, tmp_path):
+        """Custom CA bundle path is loaded into the context."""
+        ca_file = tmp_path / "ca-bundle.pem"
+        ca_file.write_text("dummy")
+        with patch.object(ssl.SSLContext, "load_verify_locations", wraps=None) as mock_load:
+            ctx = create_ssl_context(str(ca_file))
+            # load_verify_locations is called by create_default_context for system
+            # certs and then by our code for the custom bundle — verify our call
+            mock_load.assert_any_call(str(ca_file))
+        assert isinstance(ctx, ssl.SSLContext)
+
+    def test_missing_ca_bundle_raises_error(self):
+        """Non-existent CA bundle path raises FileNotFoundError."""
+        with pytest.raises(FileNotFoundError, match="TLS CA bundle file not found"):
+            create_ssl_context("/nonexistent/path/ca-bundle.pem")
+
+    def test_none_ca_bundle_uses_system_defaults(self):
+        """None ca_bundle uses system default certificate store."""
+        ctx = create_ssl_context(None)
+        assert isinstance(ctx, ssl.SSLContext)
+        assert ctx.check_hostname is True
 
 
 class TestImapConfig:
@@ -151,6 +185,52 @@ class TestImapConfig:
         # Missing username
         with pytest.raises(KeyError):
             ImapConfig.from_dict({"host": "imap.example.com"})
+
+    def test_tls_ca_bundle_from_env(self, monkeypatch):
+        """Test tls_ca_bundle is read from IMAP_TLS_CA_BUNDLE env var."""
+        monkeypatch.setenv("IMAP_PASSWORD", "password")
+        monkeypatch.setenv("IMAP_TLS_CA_BUNDLE", "/path/to/ca.pem")
+
+        config = ImapConfig.from_dict({
+            "host": "imap.example.com",
+            "username": "test@example.com",
+        })
+        assert config.tls_ca_bundle == "/path/to/ca.pem"
+
+    def test_tls_ca_bundle_from_dict(self, monkeypatch):
+        """Test tls_ca_bundle from config dict when env var is not set."""
+        monkeypatch.setenv("IMAP_PASSWORD", "password")
+        monkeypatch.delenv("IMAP_TLS_CA_BUNDLE", raising=False)
+
+        config = ImapConfig.from_dict({
+            "host": "imap.example.com",
+            "username": "test@example.com",
+            "tls_ca_bundle": "/from/yaml/ca.pem",
+        })
+        assert config.tls_ca_bundle == "/from/yaml/ca.pem"
+
+    def test_tls_ca_bundle_env_overrides_dict(self, monkeypatch):
+        """Test env var takes precedence over config dict for ca_bundle."""
+        monkeypatch.setenv("IMAP_PASSWORD", "password")
+        monkeypatch.setenv("IMAP_TLS_CA_BUNDLE", "/env/ca.pem")
+
+        config = ImapConfig.from_dict({
+            "host": "imap.example.com",
+            "username": "test@example.com",
+            "tls_ca_bundle": "/yaml/ca.pem",
+        })
+        assert config.tls_ca_bundle == "/env/ca.pem"
+
+    def test_tls_ca_bundle_defaults_to_none(self, monkeypatch):
+        """Test tls_ca_bundle defaults to None when not configured."""
+        monkeypatch.setenv("IMAP_PASSWORD", "password")
+        monkeypatch.delenv("IMAP_TLS_CA_BUNDLE", raising=False)
+
+        config = ImapConfig.from_dict({
+            "host": "imap.example.com",
+            "username": "test@example.com",
+        })
+        assert config.tls_ca_bundle is None
 
 
 class TestSmtpConfig:
@@ -299,6 +379,42 @@ class TestSmtpConfig:
         # Missing username
         with pytest.raises(KeyError):
             SmtpConfig.from_dict({"host": "smtp.example.com"})
+
+    def test_tls_ca_bundle_from_env(self, monkeypatch):
+        """Test tls_ca_bundle from SMTP_TLS_CA_BUNDLE env var."""
+        monkeypatch.setenv("SMTP_PASSWORD", "password")
+        monkeypatch.setenv("SMTP_TLS_CA_BUNDLE", "/smtp/ca.pem")
+        monkeypatch.delenv("IMAP_TLS_CA_BUNDLE", raising=False)
+
+        config = SmtpConfig.from_dict({
+            "host": "smtp.example.com",
+            "username": "test@example.com",
+        })
+        assert config.tls_ca_bundle == "/smtp/ca.pem"
+
+    def test_tls_ca_bundle_falls_back_to_imap(self, monkeypatch):
+        """Test SMTP falls back to IMAP_TLS_CA_BUNDLE when SMTP var not set."""
+        monkeypatch.setenv("SMTP_PASSWORD", "password")
+        monkeypatch.delenv("SMTP_TLS_CA_BUNDLE", raising=False)
+        monkeypatch.setenv("IMAP_TLS_CA_BUNDLE", "/imap/ca.pem")
+
+        config = SmtpConfig.from_dict({
+            "host": "smtp.example.com",
+            "username": "test@example.com",
+        })
+        assert config.tls_ca_bundle == "/imap/ca.pem"
+
+    def test_tls_ca_bundle_defaults_to_none(self, monkeypatch):
+        """Test tls_ca_bundle defaults to None when not configured."""
+        monkeypatch.setenv("SMTP_PASSWORD", "password")
+        monkeypatch.delenv("SMTP_TLS_CA_BUNDLE", raising=False)
+        monkeypatch.delenv("IMAP_TLS_CA_BUNDLE", raising=False)
+
+        config = SmtpConfig.from_dict({
+            "host": "smtp.example.com",
+            "username": "test@example.com",
+        })
+        assert config.tls_ca_bundle is None
 
 
 class TestServerConfig:

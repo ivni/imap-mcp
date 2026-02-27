@@ -150,6 +150,7 @@ This MCP server requires access to your email account, which contains sensitive 
 * Review the permissions granted to the server in your email provider's settings
 * **Destructive action confirmation**: delete, move, draft reply, and meeting invite tools require explicit user confirmation via MCP Elicitation API before execution. Confirmation messages contain only action, UID, and folder — never email content (prompt injection defense). Set `IMAP_MCP_SKIP_CONFIRMATION=true` to bypass in trusted CI/automation environments only
 * **Supply chain security**: All dependencies are pinned by hash in `uv.lock`. CI and Docker builds use `uv sync --frozen` to verify hashes, preventing package substitution attacks
+* **TLS certificate verification**: All IMAP and SMTP connections use explicit SSL contexts with certificate verification enabled by default. For environments with internal certificate authorities, set `IMAP_TLS_CA_BUNDLE` (and optionally `SMTP_TLS_CA_BUNDLE`) to a custom CA bundle path. SMTP falls back to `IMAP_TLS_CA_BUNDLE` when its own var is not set
 
 ## Project Roadmap
 

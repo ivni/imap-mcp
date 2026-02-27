@@ -61,7 +61,7 @@ class TestImapClient:
         assert client._is_folder_allowed("Sent") is False
 
     def test_connect_success(self, mock_imap_client):
-        """Test successful connection."""
+        """Test successful connection with explicit SSL context."""
         config = ImapConfig(
             host="imap.example.com",
             port=993,
@@ -70,24 +70,80 @@ class TestImapClient:
             use_ssl=True,
         )
         client = ImapClient(config)
-        
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            with patch("imap_mcp.imap_client.create_ssl_context") as mock_create_ctx:
+                mock_ctx = mock_create_ctx.return_value
+                mock_client_class.return_value = mock_imap_client
+                client.connect()
+
+                # Verify SSL context was created with no custom CA bundle
+                mock_create_ctx.assert_called_once_with(None)
+
+                # Verify connection was established with explicit ssl_context
+                mock_client_class.assert_called_once_with(
+                    "imap.example.com",
+                    port=993,
+                    ssl=True,
+                    ssl_context=mock_ctx,
+                )
+
+                # Verify login was called with correct credentials
+                mock_imap_client.login.assert_called_once_with(
+                    "test@example.com", "password"
+                )
+
+                # Verify client is connected
+                assert client.connected is True
+                assert client.client is mock_imap_client
+
+    def test_connect_with_custom_ca_bundle(self, mock_imap_client):
+        """Test connection with custom CA bundle."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+            tls_ca_bundle="/path/to/ca.pem",
+        )
+        client = ImapClient(config)
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            with patch("imap_mcp.imap_client.create_ssl_context") as mock_create_ctx:
+                mock_ctx = mock_create_ctx.return_value
+                mock_client_class.return_value = mock_imap_client
+                client.connect()
+
+                mock_create_ctx.assert_called_once_with("/path/to/ca.pem")
+                mock_client_class.assert_called_once_with(
+                    "imap.example.com",
+                    port=993,
+                    ssl=True,
+                    ssl_context=mock_ctx,
+                )
+
+    def test_connect_no_ssl_no_context(self, mock_imap_client):
+        """Test that ssl_context is None when use_ssl is False."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=143,
+            username="test@example.com",
+            password="password",
+            use_ssl=False,
+        )
+        client = ImapClient(config)
+
         with patch("imapclient.IMAPClient") as mock_client_class:
             mock_client_class.return_value = mock_imap_client
             client.connect()
-            
-            # Verify connection was established with correct parameters
+
             mock_client_class.assert_called_once_with(
-                "imap.example.com", 
-                port=993, 
-                ssl=True
+                "imap.example.com",
+                port=143,
+                ssl=False,
+                ssl_context=None,
             )
-            
-            # Verify login was called with correct credentials
-            mock_imap_client.login.assert_called_once_with("test@example.com", "password")
-            
-            # Verify client is connected
-            assert client.connected is True
-            assert client.client is mock_imap_client
 
     def test_connect_failure(self):
         """Test connection failure."""

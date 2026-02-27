@@ -172,7 +172,10 @@ def create_server(
             "imap_user": config.imap.username,
             "imap_ssl": config.imap.use_ssl,
         }
-        
+
+        if config.imap.tls_ca_bundle:
+            status["imap_tls_ca_bundle"] = config.imap.tls_ca_bundle
+
         if config.allowed_folders:
             status["allowed_folders"] = list(config.allowed_folders)
         else:

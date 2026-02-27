@@ -16,7 +16,7 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 - MUST enforce `allowed_folders` in ALL code paths, including `search_emails` with `folder=None`
 - When `allowed_folders` is not configured, defaults to INBOX-only access (principle of least privilege)
 - Set `allowed_folders: []` in config or `IMAP_ALLOWED_FOLDERS=""` to explicitly allow all folders
-- MUST keep TLS certificate verification enabled; support explicit custom CA bundle config, never silently disable verification
+- MUST keep TLS certificate verification enabled; support explicit custom CA bundle config (`IMAP_TLS_CA_BUNDLE`, `SMTP_TLS_CA_BUNDLE` env vars, or `tls_ca_bundle` in config YAML), never silently disable verification
 - MUST require confirmation for destructive tools (delete, move, send) — design for prompt injection resistance
 - `.env` file loading is disabled by default; `IMAP_MCP_LOAD_DOTENV=true` opts in — prevents malicious `.env` override in shared/containerized environments
 - `IMAP_MCP_SKIP_CONFIRMATION=true` bypasses confirmation — ONLY for trusted CI/automation, never in production with user-facing AI
@@ -38,7 +38,7 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 ## Architecture
 
 - `imap_mcp/server.py` — FastMCP server entry point, lifespan connection management
-- `imap_mcp/config.py` — YAML + env var config (ImapConfig, ServerConfig); passwords only from env vars
+- `imap_mcp/config.py` — YAML + env var config (ImapConfig, ServerConfig); passwords only from env vars; `create_ssl_context()` helper for TLS
 - `imap_mcp/imap_client.py` — IMAP operations (connect, search, fetch, move, delete, threading)
 - `imap_mcp/tools.py` — MCP tool registrations (search, delete, move, flag, draft, meeting workflow)
 - `imap_mcp/resources.py` — MCP resource registrations (folders, list, search, email content)

@@ -2,6 +2,7 @@
 
 import logging
 import os
+import ssl
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -28,6 +29,35 @@ def _maybe_load_dotenv() -> None:
         )
 
 
+def create_ssl_context(ca_bundle: Optional[str] = None) -> ssl.SSLContext:
+    """Create an SSL context with certificate verification and optional custom CA bundle.
+
+    Always creates a context with certificate verification enabled.
+    Never silently disables verification.
+
+    Args:
+        ca_bundle: Path to a custom CA bundle file (PEM format).
+            If None, uses the system default certificate store.
+
+    Returns:
+        Configured SSL context with verification enabled.
+
+    Raises:
+        FileNotFoundError: If the specified CA bundle file does not exist.
+        ssl.SSLError: If the CA bundle file cannot be loaded.
+    """
+    context = ssl.create_default_context()
+    if ca_bundle:
+        bundle_path = Path(ca_bundle)
+        if not bundle_path.exists():
+            raise FileNotFoundError(
+                f"TLS CA bundle file not found: {ca_bundle}"
+            )
+        context.load_verify_locations(ca_bundle)
+        logger.info("Loaded custom CA bundle: %s", ca_bundle)
+    return context
+
+
 @dataclass
 class ImapConfig:
     """IMAP server configuration."""
@@ -37,6 +67,7 @@ class ImapConfig:
     username: str
     password: str
     use_ssl: bool = True
+    tls_ca_bundle: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ImapConfig":
@@ -57,12 +88,17 @@ class ImapConfig:
                 "IMAP password must be specified via IMAP_PASSWORD environment variable"
             )
 
+        tls_ca_bundle = (
+            os.environ.get("IMAP_TLS_CA_BUNDLE") or data.get("tls_ca_bundle") or None
+        )
+
         return cls(
             host=data["host"],
             port=data.get("port", 993 if data.get("use_ssl", True) else 143),
             username=data["username"],
             password=password,
             use_ssl=data.get("use_ssl", True),
+            tls_ca_bundle=tls_ca_bundle,
         )
 
 
@@ -75,6 +111,7 @@ class SmtpConfig:
     username: str
     password: str
     use_tls: bool = True
+    tls_ca_bundle: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SmtpConfig":
@@ -96,12 +133,20 @@ class SmtpConfig:
                 "(or IMAP_PASSWORD) environment variable"
             )
 
+        tls_ca_bundle = (
+            os.environ.get("SMTP_TLS_CA_BUNDLE")
+            or os.environ.get("IMAP_TLS_CA_BUNDLE")
+            or data.get("tls_ca_bundle")
+            or None
+        )
+
         return cls(
             host=data["host"],
             port=data.get("port", 587 if data.get("use_tls", True) else 465),
             username=data["username"],
             password=password,
             use_tls=data.get("use_tls", True),
+            tls_ca_bundle=tls_ca_bundle,
         )
 
 

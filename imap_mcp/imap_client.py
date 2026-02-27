@@ -3,12 +3,13 @@
 import email
 import logging
 import re
+import ssl
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Union
 
 import imapclient
 
-from imap_mcp.config import ImapConfig
+from imap_mcp.config import ImapConfig, create_ssl_context
 from imap_mcp.models import Email
 
 logger = logging.getLogger(__name__)
@@ -41,24 +42,32 @@ class ImapClient:
     
     def connect(self) -> None:
         """Connect to IMAP server.
-        
+
+        Creates an explicit SSL context (with optional custom CA bundle)
+        for TLS connections instead of relying on the library default.
+
         Raises:
             ConnectionError: If connection fails
         """
         try:
+            ssl_context: Optional[ssl.SSLContext] = None
+            if self.config.use_ssl:
+                ssl_context = create_ssl_context(self.config.tls_ca_bundle)
+
             self.client = imapclient.IMAPClient(
-                self.config.host, 
-                port=self.config.port, 
+                self.config.host,
+                port=self.config.port,
                 ssl=self.config.use_ssl,
+                ssl_context=ssl_context,
             )
-            
+
             self.client.login(self.config.username, self.config.password)
-                
+
             self.connected = True
-            logger.info(f"Connected to IMAP server {self.config.host}")
+            logger.info("Connected to IMAP server %s", self.config.host)
         except Exception as e:
             self.connected = False
-            logger.error(f"Failed to connect to IMAP server: {e}")
+            logger.error("Failed to connect to IMAP server: %s", e)
             raise ConnectionError(f"Failed to connect to IMAP server: {e}")
     
     def verify_connection(self) -> List[str]:
