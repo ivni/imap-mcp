@@ -1,5 +1,7 @@
 # IMAP MCP Server
 
+[![CI](https://github.com/ivni/imap-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ivni/imap-mcp/actions/workflows/ci.yml)
+
 It is a fork of original [non-dirty/imap-mcp](https://github.com/non-dirty/imap-mcp). Original project have security issues and was not updated for a year. It was also developed for Gmail, while Gmail itself have native integration with Claude now. So my idea was to update it:
 
 * fix security issues
@@ -146,6 +148,7 @@ This MCP server requires access to your email account, which contains sensitive 
 * Limit folder access to only what's necessary for your use case
 * Review the permissions granted to the server in your email provider's settings
 * **Destructive action confirmation**: delete, move, draft reply, and meeting invite tools require explicit user confirmation via MCP Elicitation API before execution. Confirmation messages contain only action, UID, and folder — never email content (prompt injection defense). Set `IMAP_MCP_SKIP_CONFIRMATION=true` to bypass in trusted CI/automation environments only
+* **Supply chain security**: All dependencies are pinned by hash in `uv.lock`. CI and Docker builds use `uv sync --frozen` to verify hashes, preventing package substitution attacks
 
 ## Project Roadmap
 
