@@ -230,6 +230,44 @@ class TestResources:
         # The error should be included in the output text
         assert "Error: Test error" in result
 
+    # --- UID validation tests (issue #12) ---
+
+    @pytest.mark.asyncio
+    async def test_get_email_invalid_uid_non_numeric(self, mock_mcp, mock_imap_client, mock_context):
+        """Test get_email with non-numeric UID returns user-friendly error."""
+        register_resources(mock_mcp, mock_imap_client)
+
+        get_email = mock_mcp.resources["email://{folder}/{uid}"]
+        result = await get_email("INBOX", "not-a-number")
+
+        assert "Invalid UID" in result
+        assert "numeric" in result
+        mock_imap_client.fetch_email.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_get_email_invalid_uid_zero(self, mock_mcp, mock_imap_client, mock_context):
+        """Test get_email with UID=0 returns user-friendly error."""
+        register_resources(mock_mcp, mock_imap_client)
+
+        get_email = mock_mcp.resources["email://{folder}/{uid}"]
+        result = await get_email("INBOX", "0")
+
+        assert "Invalid UID" in result
+        assert "positive integer" in result
+        mock_imap_client.fetch_email.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_get_email_invalid_uid_negative(self, mock_mcp, mock_imap_client, mock_context):
+        """Test get_email with negative UID returns user-friendly error."""
+        register_resources(mock_mcp, mock_imap_client)
+
+        get_email = mock_mcp.resources["email://{folder}/{uid}"]
+        result = await get_email("INBOX", "-5")
+
+        assert "Invalid UID" in result
+        assert "positive integer" in result
+        mock_imap_client.fetch_email.assert_not_called()
+
     def test_resource_parameter_validation(self):
         """Test that resource parameter definitions are valid for MCP API.
 

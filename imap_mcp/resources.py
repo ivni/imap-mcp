@@ -186,8 +186,16 @@ def register_resources(mcp: FastMCP, imap_client: ImapClient) -> None:
         client = get_client_from_context(ctx)
 
         try:
+            try:
+                uid_int = int(uid)
+            except (ValueError, TypeError):
+                return f"Invalid UID '{uid}': must be a numeric value"
+
+            if uid_int <= 0:
+                return f"Invalid UID '{uid}': must be a positive integer"
+
             # Fetch email
-            email_obj = client.fetch_email(int(uid), folder=folder)
+            email_obj = client.fetch_email(uid_int, folder=folder)
 
             if not email_obj:
                 return f"Email with UID {uid} not found in folder {folder}"

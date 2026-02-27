@@ -211,6 +211,24 @@ class ImapClient:
                 "(rejected: '\"', '\\', '{', '}', newlines, NUL)"
             )
 
+    def _validate_uid(self, uid: int) -> None:
+        """Validate that a UID is a positive integer.
+
+        IMAP UIDs are unsigned 32-bit integers (RFC 3501 section 2.3.1.1).
+
+        Args:
+            uid: UID value to validate.
+
+        Raises:
+            ValueError: If uid is not a positive integer or exceeds 32-bit range.
+        """
+        if not isinstance(uid, int):
+            raise ValueError(f"UID must be an integer, got {type(uid).__name__}")
+        if uid <= 0:
+            raise ValueError(f"UID must be a positive integer, got {uid}")
+        if uid > 0xFFFFFFFF:
+            raise ValueError(f"UID exceeds maximum 32-bit value: {uid}")
+
     def select_folder(self, folder: str, readonly: bool = False) -> Dict[str, Any]:
         """Select folder on IMAP server.
 
@@ -309,8 +327,10 @@ class ImapClient:
             Email object or None if not found
 
         Raises:
+            ValueError: If uid is not a positive integer
             ConnectionError: If not connected and connection fails
         """
+        self._validate_uid(uid)
         self.ensure_connected()
         self.select_folder(folder, readonly=True)
         assert self.client is not None
@@ -358,8 +378,11 @@ class ImapClient:
             Dictionary mapping UIDs to Email objects
 
         Raises:
+            ValueError: If any uid is not a positive integer
             ConnectionError: If not connected and connection fails
         """
+        for uid in uids:
+            self._validate_uid(uid)
         self.ensure_connected()
         self.select_folder(folder, readonly=True)
 
@@ -411,9 +434,10 @@ class ImapClient:
             List of Email objects in the thread, sorted chronologically
 
         Raises:
+            ValueError: If uid is not a positive integer or initial email cannot be found
             ConnectionError: If not connected and connection fails
-            ValueError: If the initial email cannot be found
         """
+        self._validate_uid(uid)
         self.ensure_connected()
         self.select_folder(folder, readonly=True)
 
@@ -539,8 +563,10 @@ class ImapClient:
             True if successful
 
         Raises:
+            ValueError: If uid is not a positive integer
             ConnectionError: If not connected and connection fails
         """
+        self._validate_uid(uid)
         self.ensure_connected()
         self.select_folder(folder)
         assert self.client is not None
@@ -569,9 +595,10 @@ class ImapClient:
             True if successful
 
         Raises:
+            ValueError: If uid is not a positive integer, or folder is not allowed or contains invalid characters
             ConnectionError: If not connected and connection fails
-            ValueError: If folder is not allowed or contains invalid characters
         """
+        self._validate_uid(uid)
         self._validate_folder_name(source_folder)
         self._validate_folder_name(target_folder)
 
@@ -610,8 +637,10 @@ class ImapClient:
             True if successful
 
         Raises:
+            ValueError: If uid is not a positive integer
             ConnectionError: If not connected and connection fails
         """
+        self._validate_uid(uid)
         self.ensure_connected()
         self.select_folder(folder)
         assert self.client is not None

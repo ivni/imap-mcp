@@ -1202,3 +1202,143 @@ class TestImapClient:
 
             # Verify result is failure
             assert result is False
+
+    # --- UID validation tests (issue #12) ---
+
+    def test_validate_uid_valid(self):
+        """Test that valid UIDs pass validation."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        # These should NOT raise
+        client._validate_uid(1)
+        client._validate_uid(42)
+        client._validate_uid(12345)
+        client._validate_uid(0xFFFFFFFF)  # max 32-bit
+
+    def test_validate_uid_rejects_zero(self):
+        """Test that UID=0 is rejected."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="positive integer"):
+            client._validate_uid(0)
+
+    def test_validate_uid_rejects_negative(self):
+        """Test that negative UIDs are rejected."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="positive integer"):
+            client._validate_uid(-1)
+
+        with pytest.raises(ValueError, match="positive integer"):
+            client._validate_uid(-999)
+
+    def test_validate_uid_rejects_overflow(self):
+        """Test that UIDs exceeding 32-bit range are rejected."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="maximum"):
+            client._validate_uid(0xFFFFFFFF + 1)
+
+    def test_fetch_email_rejects_invalid_uid(self):
+        """Test that fetch_email rejects invalid UIDs before connecting."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="positive integer"):
+            client.fetch_email(0, "INBOX")
+
+        with pytest.raises(ValueError, match="positive integer"):
+            client.fetch_email(-1, "INBOX")
+
+    def test_fetch_emails_rejects_invalid_uid_in_list(self):
+        """Test that fetch_emails rejects lists containing invalid UIDs."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="positive integer"):
+            client.fetch_emails([1, 0, 3], "INBOX")
+
+        with pytest.raises(ValueError, match="positive integer"):
+            client.fetch_emails([-5], "INBOX")
+
+    def test_mark_email_rejects_invalid_uid(self):
+        """Test that mark_email rejects invalid UIDs."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="positive integer"):
+            client.mark_email(0, "INBOX", "\\Seen")
+
+    def test_move_email_rejects_invalid_uid(self):
+        """Test that move_email rejects invalid UIDs."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="positive integer"):
+            client.move_email(-1, "INBOX", "Archive")
+
+    def test_delete_email_rejects_invalid_uid(self):
+        """Test that delete_email rejects invalid UIDs."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="positive integer"):
+            client.delete_email(0, "INBOX")
