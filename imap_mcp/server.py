@@ -12,7 +12,6 @@ from pydantic import AnyHttpUrl
 
 from imap_mcp.config import ServerConfig, load_config
 from imap_mcp.imap_client import ImapClient
-from imap_mcp.mcp_protocol import extend_server
 from imap_mcp.resources import register_resources
 from imap_mcp.smtp_client import verify_smtp_connection
 from imap_mcp.tools import register_tools
@@ -190,9 +189,6 @@ def create_server(
             status["smtp"] = "Not configured"
 
         return "\n".join(f"{k}: {v}" for k, v in status.items())
-
-    # Apply MCP protocol extension for Claude Desktop compatibility
-    server = extend_server(server)
 
     return server
 
