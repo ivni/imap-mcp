@@ -10,7 +10,7 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 - Passwords ONLY from environment variables (`IMAP_PASSWORD`, `SMTP_PASSWORD`) — `config.yaml` password field is ignored with a warning
 - NEVER commit files matching: `config.yaml*`, `.env*`
 - MUST validate all MCP tool input parameters:
-  - Folder names checked against `allowed_folders` when configured
+  - Folder names sanitized against IMAP injection characters (`_validate_folder_name`) and checked against `allowed_folders` when configured
   - UIDs must be positive integers
   - Search criteria must use the whitelist pattern (see `tools.py` search_criteria_map)
 - MUST enforce `allowed_folders` in ALL code paths, including `search_emails` with `folder=None`
@@ -84,7 +84,6 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 ## Known Technical Debt
 
 - `allowed_folders` bypass: `search_emails` with `folder=None` ignores folder restrictions
-- No input sanitization on folder names passed to IMAP commands (injection risk)
 
 ## Testing
 

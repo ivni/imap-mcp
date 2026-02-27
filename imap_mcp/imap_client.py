@@ -13,6 +13,11 @@ from imap_mcp.models import Email
 
 logger = logging.getLogger(__name__)
 
+# Regex pattern for IMAP-significant characters that must be rejected in folder names.
+# Prevents IMAP command injection via crafted folder names.
+_INVALID_FOLDER_CHARS = re.compile(r'[\x00\r\n"\\{}]')
+_MAX_FOLDER_NAME_LENGTH = 255
+
 
 class ImapClient:
     """IMAP client for interacting with email servers."""
@@ -165,7 +170,34 @@ class ImapClient:
         
         # If allowed_folders is specified, check if folder is in it
         return folder in self.allowed_folders
-    
+
+    def _validate_folder_name(self, folder: str) -> None:
+        """Validate folder name against IMAP injection characters.
+
+        Rejects folder names containing IMAP protocol-significant characters
+        that could be used for command injection: double quotes, backslashes,
+        curly braces, newlines (CR/LF), and NUL bytes.
+
+        Args:
+            folder: Folder name to validate.
+
+        Raises:
+            ValueError: If folder name contains invalid characters or is empty.
+        """
+        if not folder or not folder.strip():
+            raise ValueError("Folder name must not be empty")
+
+        if len(folder) > _MAX_FOLDER_NAME_LENGTH:
+            raise ValueError(
+                f"Folder name exceeds maximum length of {_MAX_FOLDER_NAME_LENGTH} characters"
+            )
+
+        if _INVALID_FOLDER_CHARS.search(folder):
+            raise ValueError(
+                "Folder name contains invalid characters "
+                "(rejected: '\"', '\\', '{', '}', newlines, NUL)"
+            )
+
     def select_folder(self, folder: str, readonly: bool = False) -> Dict:
         """Select folder on IMAP server.
         
@@ -177,9 +209,11 @@ class ImapClient:
             Dictionary with folder information
         
         Raises:
-            ValueError: If folder is not allowed
+            ValueError: If folder is not allowed or contains invalid characters
             ConnectionError: If connection error occurs
         """
+        self._validate_folder_name(folder)
+
         # Make sure the folder is allowed
         if not self._is_folder_allowed(folder):
             raise ValueError(f"Folder '{folder}' is not allowed")
@@ -517,10 +551,13 @@ class ImapClient:
             
         Raises:
             ConnectionError: If not connected and connection fails
-            ValueError: If folder is not allowed
+            ValueError: If folder is not allowed or contains invalid characters
         """
+        self._validate_folder_name(source_folder)
+        self._validate_folder_name(target_folder)
+
         self.ensure_connected()
-        
+
         # Check if folders are allowed
         if self.allowed_folders is not None:
             if source_folder not in self.allowed_folders:

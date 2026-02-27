@@ -806,6 +806,220 @@ class TestImapClient:
             mock_imap_client.select_folder.assert_not_called()
             mock_imap_client.copy.assert_not_called()
 
+    # --- Folder name sanitization tests (issue #3) ---
+
+    def test_validate_folder_name_valid(self):
+        """Test that valid folder names pass validation."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        # These should NOT raise
+        client._validate_folder_name("INBOX")
+        client._validate_folder_name("Sent")
+        client._validate_folder_name("Archive/2024")
+        client._validate_folder_name("My Folder")
+        client._validate_folder_name("INBOX.Drafts")
+        client._validate_folder_name("Brouillons")
+
+    def test_validate_folder_name_rejects_double_quote(self):
+        """Test that folder names with double quotes are rejected."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="invalid characters"):
+            client._validate_folder_name('INBOX" LOGOUT')
+
+    def test_validate_folder_name_rejects_backslash(self):
+        """Test that folder names with backslashes are rejected."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="invalid characters"):
+            client._validate_folder_name("INBOX\\Subfolder")
+
+    def test_validate_folder_name_rejects_curly_braces(self):
+        """Test that folder names with curly braces are rejected."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="invalid characters"):
+            client._validate_folder_name("INBOX{5}")
+
+    def test_validate_folder_name_rejects_newlines(self):
+        """Test that folder names with CR/LF are rejected."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="invalid characters"):
+            client._validate_folder_name("INBOX\r\nLOGOUT")
+        with pytest.raises(ValueError, match="invalid characters"):
+            client._validate_folder_name("INBOX\nLOGOUT")
+
+    def test_validate_folder_name_rejects_nul(self):
+        """Test that folder names with NUL bytes are rejected."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="invalid characters"):
+            client._validate_folder_name("INBOX\x00")
+
+    def test_validate_folder_name_rejects_empty(self):
+        """Test that empty folder names are rejected."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="must not be empty"):
+            client._validate_folder_name("")
+        with pytest.raises(ValueError, match="must not be empty"):
+            client._validate_folder_name("   ")
+
+    def test_validate_folder_name_rejects_too_long(self):
+        """Test that excessively long folder names are rejected."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with pytest.raises(ValueError, match="maximum length"):
+            client._validate_folder_name("A" * 256)
+
+    def test_select_folder_rejects_injection_characters(self, mock_imap_client):
+        """Test that select_folder rejects folder names with injection characters."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            client.connect()
+
+            with pytest.raises(ValueError, match="invalid characters"):
+                client.select_folder('INBOX" LOGOUT\r\n')
+
+            # imapclient.select_folder must never be called
+            mock_imap_client.select_folder.assert_not_called()
+
+    def test_move_email_rejects_injection_in_target_folder(self, mock_imap_client):
+        """Test that move_email rejects injection characters in target folder.
+
+        Critical: target_folder bypasses select_folder() and goes
+        directly to imapclient.copy().
+        """
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            client.connect()
+
+            with pytest.raises(ValueError, match="invalid characters"):
+                client.move_email(12345, "INBOX", 'Trash{100}\r\nDELETE')
+
+            mock_imap_client.select_folder.assert_not_called()
+            mock_imap_client.copy.assert_not_called()
+
+    def test_move_email_rejects_injection_in_source_folder(self, mock_imap_client):
+        """Test that move_email rejects injection characters in source folder."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            client.connect()
+
+            with pytest.raises(ValueError, match="invalid characters"):
+                client.move_email(12345, 'INBOX"\r\n', "Trash")
+
+            mock_imap_client.select_folder.assert_not_called()
+            mock_imap_client.copy.assert_not_called()
+
+    def test_validation_before_allowed_folders_check(self, mock_imap_client):
+        """Test that character validation runs before the allowed_folders check.
+
+        Injection characters should be rejected first, even if the folder
+        would also fail the allowed_folders membership test.
+        """
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config, allowed_folders=["INBOX"])
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            client.connect()
+
+            # Folder has injection chars AND is not in allowed_folders.
+            # Expect "invalid characters", not "not allowed".
+            with pytest.raises(ValueError, match="invalid characters"):
+                client.select_folder('Trash"\r\n')
+
     def test_move_email_failure(self, mock_imap_client):
         """Test moving an email when operation fails."""
         config = ImapConfig(
