@@ -3,35 +3,39 @@
 import datetime
 import email
 import email.utils
-import os
-import re
-import time
 import logging
+import os
+import time
 from contextlib import contextmanager
 from email.header import Header
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Generator
+from typing import Any, Dict, Generator, List, Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 try:
     from imapclient.response_types import Address, BodyData, Envelope
 except ImportError:
     # Mock these classes if not available
-    class Address: pass
-    class BodyData: pass
-    class Envelope: pass
+    class Address:  # type: ignore[no-redef]
+        pass
+
+    class BodyData:  # type: ignore[no-redef]
+        pass
+
+    class Envelope:  # type: ignore[no-redef]
+        pass
 
 try:
     from dotenv import load_dotenv
 except ImportError:
-    load_dotenv = lambda x=None: None
+    def load_dotenv(x=None):
+        return None
 
-from imap_mcp.models import Email, EmailAddress, EmailAttachment, EmailContent
-from imap_mcp.config import ImapConfig
-from imap_mcp.imap_client import ImapClient
+from imap_mcp.models import Email, EmailAddress, EmailContent
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -69,7 +73,7 @@ def mock_imap_client():
     with patch("imapclient.IMAPClient") as mock_client:
         client_instance = MagicMock()
         mock_client.return_value = client_instance
-        
+
         # Set up standard responses
         client_instance.list_folders.return_value = [
             ((b"\\HasNoChildren",), b"/", "INBOX"),
@@ -79,7 +83,7 @@ def mock_imap_client():
         ]
         client_instance.select_folder.return_value = {b"EXISTS": 5}
         client_instance.search.return_value = [1, 2, 3, 4, 5]
-        
+
         yield client_instance
 
 
@@ -105,15 +109,15 @@ def test_email_message_multipart():
     msg["Subject"] = "Multipart Test Email"
     msg["Message-ID"] = "<multipart-test-123@example.com>"
     msg["Date"] = email.utils.formatdate()
-    
+
     # Add text part
     text_part = MIMEText("This is the plain text content.", "plain")
     msg.attach(text_part)
-    
+
     # Add HTML part
     html_part = MIMEText("<p>This is the <b>HTML</b> content.</p>", "html")
     msg.attach(html_part)
-    
+
     return msg
 
 
@@ -126,16 +130,16 @@ def test_email_message_with_attachment():
     msg["Subject"] = "Email with Attachment"
     msg["Message-ID"] = "<attachment-test-123@example.com>"
     msg["Date"] = email.utils.formatdate()
-    
+
     # Add text part
     text_part = MIMEText("This email has an attachment.", "plain")
     msg.attach(text_part)
-    
+
     # Add attachment
     attachment = MIMEApplication(b"This is attachment content")
     attachment.add_header("Content-Disposition", "attachment", filename="test.txt")
     msg.attach(attachment)
-    
+
     return msg
 
 
@@ -148,11 +152,11 @@ def test_email_message_encoded_headers():
     msg["Subject"] = Header("Tést Émàil with Éncödëd Headers", "utf-8").encode()
     msg["Message-ID"] = "<encoded-test-123@example.com>"
     msg["Date"] = email.utils.formatdate()
-    
+
     # Add text part
     text_part = MIMEText("This email has encoded headers.", "plain")
     msg.attach(text_part)
-    
+
     return msg
 
 
@@ -174,7 +178,7 @@ def make_test_email_message():
         headers: Dict[str, str] = {},
     ) -> MIMEMultipart:
         """Create a customized email message for testing.
-        
+
         Args:
             from_addr: Sender email address
             from_name: Sender name
@@ -188,60 +192,60 @@ def make_test_email_message():
             date: Email date (defaults to current time)
             message_id: Custom Message-ID (default: auto-generated)
             headers: Additional headers as dict
-            
+
         Returns:
             Email message object
         """
         # Create multipart message
         msg = MIMEMultipart() if body_html or attachments else MIMEText(body_text)
-        
+
         # Add basic headers
         msg["From"] = f"{from_name} <{from_addr}>" if from_name else from_addr
         msg["To"] = ", ".join(f"{name} <{addr}>" if name else addr for addr, name in to_addrs)
-        
+
         if cc_addrs:
             msg["Cc"] = ", ".join(f"{name} <{addr}>" if name else addr for addr, name in cc_addrs)
         if bcc_addrs:
             msg["Bcc"] = ", ".join(f"{name} <{addr}>" if name else addr for addr, name in bcc_addrs)
-            
+
         msg["Subject"] = subject
-        
+
         # Add date
         if date:
             msg["Date"] = email.utils.format_datetime(date)
         else:
             msg["Date"] = email.utils.formatdate()
-            
+
         # Add Message-ID
         if message_id:
             msg["Message-ID"] = message_id
         else:
             msg["Message-ID"] = f"<test-{hash(subject)}-{hash(from_addr)}@example.com>"
-            
+
         # Add additional headers
         for name, value in headers.items():
             msg[name] = value
-            
+
         # If multipart, add parts
         if isinstance(msg, MIMEMultipart):
             # Add text part
             text_part = MIMEText(body_text, "plain")
             msg.attach(text_part)
-            
+
             # Add HTML part if provided
             if body_html:
                 html_part = MIMEText(body_html, "html")
                 msg.attach(html_part)
-                
+
             # Add attachments
             for filename, content, content_type in attachments:
                 attachment = MIMEApplication(content)
                 attachment.add_header("Content-Disposition", "attachment", filename=filename)
                 attachment.add_header("Content-Type", content_type)
                 msg.attach(attachment)
-                
+
         return msg
-    
+
     return _make_test_email_message
 
 
@@ -293,7 +297,7 @@ def make_test_email_response_data():
             b"UID": uid,
             b"INTERNALDATE": internal_date
         }
-    
+
     return _make_response_data
 
 
@@ -317,16 +321,16 @@ def configure_test_env():
     """Configure environment variables for testing."""
     # Save original environment
     original_env = os.environ.copy()
-    
+
     # Set test environment variables
     os.environ["IMAP_SERVER"] = "imap.example.com"
     os.environ["IMAP_PORT"] = "993"
     os.environ["IMAP_USERNAME"] = "test@example.com"
     os.environ["IMAP_PASSWORD"] = "test_password"
     os.environ["MCP_SERVER_PORT"] = "3000"
-    
+
     yield
-    
+
     # Restore original environment
     os.environ.clear()
     os.environ.update(original_env)

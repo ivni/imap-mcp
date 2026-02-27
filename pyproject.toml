@@ -76,3 +76,8 @@ markers = [
     "integration: Integration tests requiring actual services",
     "slow: Tests that take a long time to run",
 ]
+
+[dependency-groups]
+dev = [
+    "types-pyyaml>=6.0.12.20250915",
+]

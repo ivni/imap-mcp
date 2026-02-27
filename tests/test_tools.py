@@ -2,16 +2,15 @@
 
 import json
 import os
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from mcp.server.fastmcp import FastMCP, Context
+import pytest
+from mcp.server.fastmcp import Context, FastMCP
 
 from imap_mcp.imap_client import ImapClient
 from imap_mcp.models import Email, EmailAddress, EmailContent
 from imap_mcp.tools import register_tools, require_confirmation
-
 
 # --- Shared fixtures ---
 

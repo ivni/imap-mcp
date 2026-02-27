@@ -1,26 +1,22 @@
 """Tests for meeting invite identification and parsing logic."""
 
-import pytest
-from unittest.mock import MagicMock
 from datetime import datetime
-from email.message import Message
 
-from imap_mcp.models import Email, EmailAddress, EmailContent, EmailAttachment
+import pytest
+
+from imap_mcp.models import Email, EmailAddress, EmailAttachment, EmailContent
 from imap_mcp.workflows.invite_parser import (
-    identify_meeting_invite_details,
-    _is_meeting_invite,
-    _extract_meeting_details,
-    _extract_meeting_subject,
+    _extract_description,
+    _extract_location,
     _extract_meeting_times,
     _extract_organizer,
-    _extract_location,
-    _extract_description
+    identify_meeting_invite_details,
 )
 
 
 class TestInviteParser:
     """Tests for invite parser functions."""
-    
+
     @pytest.fixture
     def basic_invite_email(self):
         """Create a basic meeting invite email."""
@@ -41,7 +37,7 @@ class TestInviteParser:
             ),
             headers={"Content-Type": "text/calendar; method=REQUEST"}
         )
-    
+
     @pytest.fixture
     def calendar_attachment_invite_email(self):
         """Create a meeting invite email with calendar attachment."""
@@ -56,7 +52,7 @@ class TestInviteParser:
             ),
             headers={}
         )
-        
+
         # Add calendar attachment
         email.attachments = [
             EmailAttachment(
@@ -65,9 +61,9 @@ class TestInviteParser:
                 size=1024
             )
         ]
-        
+
         return email
-    
+
     @pytest.fixture
     def online_meeting_invite_email(self):
         """Create an online meeting invite email."""
@@ -87,7 +83,7 @@ class TestInviteParser:
             ),
             headers={}
         )
-    
+
     @pytest.fixture
     def non_invite_email(self):
         """Create a regular non-invite email."""
@@ -102,7 +98,7 @@ class TestInviteParser:
             ),
             headers={}
         )
-    
+
     @pytest.fixture
     def ambiguous_email(self):
         """Create an email with some meeting-like keywords but not an invite."""
@@ -117,76 +113,76 @@ class TestInviteParser:
             ),
             headers={}
         )
-    
+
     def test_identify_meeting_invite_by_subject(self, basic_invite_email):
         """Test identifying meeting invite by subject keywords."""
         result = identify_meeting_invite_details(basic_invite_email)
         assert result["is_invite"] is True
         assert "subject" in result["details"]
         assert result["details"]["subject"] == "Project Review"
-    
+
     def test_identify_meeting_invite_by_attachment(self, calendar_attachment_invite_email):
         """Test identifying meeting invite by calendar attachment."""
         result = identify_meeting_invite_details(calendar_attachment_invite_email)
         assert result["is_invite"] is True
         assert "subject" in result["details"]
         assert result["details"]["subject"] == "Team Sync"
-    
+
     def test_identify_meeting_invite_by_content(self, online_meeting_invite_email):
         """Test identifying meeting invite by content patterns."""
         result = identify_meeting_invite_details(online_meeting_invite_email)
         assert result["is_invite"] is True
         assert "location" in result["details"]
         assert "https://meeting.example.com/workshop" in result["details"]["location"]
-    
+
     def test_non_invite_email(self, non_invite_email):
         """Test that non-invite emails are correctly identified."""
         result = identify_meeting_invite_details(non_invite_email)
         assert result["is_invite"] is False
         assert result["details"] == {}
-    
+
     def test_ambiguous_email(self, ambiguous_email):
         """Test handling of ambiguous emails with meeting keywords."""
         # Our implementation might identify this as a meeting or not depending on threshold
         # The important thing is consistent behavior
         result = identify_meeting_invite_details(ambiguous_email)
         is_invite = result["is_invite"]
-        
+
         # If identified as invite, check extracted details
         if is_invite:
             assert "subject" in result["details"]
             assert result["details"]["subject"] == "About yesterday's meeting"
         else:
             assert result["details"] == {}
-    
+
     def test_extract_meeting_times(self, basic_invite_email):
         """Test extracting meeting start and end times."""
         start_time, end_time = _extract_meeting_times(basic_invite_email)
-        
+
         assert start_time is not None
         assert end_time is not None
-        
+
         # Check expected time values
         assert start_time.hour == 14  # 2 PM
         assert start_time.minute == 0
         assert end_time.hour == 15    # 3 PM
         assert end_time.minute == 0
-    
+
     def test_extract_meeting_location(self, basic_invite_email, online_meeting_invite_email):
         """Test extracting meeting location for physical and online meetings."""
         # Physical location
         location1 = _extract_location(basic_invite_email)
         assert "Conference Room A" in location1
-        
+
         # Online location
         location2 = _extract_location(online_meeting_invite_email)
         assert "https://meeting.example.com/workshop" in location2
-    
+
     def test_extract_meeting_organizer(self, basic_invite_email):
         """Test extracting meeting organizer."""
         organizer = _extract_organizer(basic_invite_email)
         assert "John Smith" in organizer
-    
+
     def test_fallback_to_email_date(self):
         """Test fallback to email date when no explicit meeting time is found."""
         email = Email(
@@ -200,15 +196,15 @@ class TestInviteParser:
             ),
             headers={}
         )
-        
+
         result = identify_meeting_invite_details(email)
-        
+
         # We might identify this as a meeting due to the keyword
         if result["is_invite"]:
             assert result["details"]["start_time"] is not None
             # Should fall back to email date
             assert result["details"]["start_time"].date() == datetime(2025, 4, 5).date()
-    
+
     def test_extract_description(self, basic_invite_email):
         """Test extracting meeting description."""
         description = _extract_description(basic_invite_email)

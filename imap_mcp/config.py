@@ -198,13 +198,13 @@ class ServerConfig:
 
 def load_config(config_path: Optional[str] = None) -> ServerConfig:
     """Load configuration from file or environment variables.
-    
+
     Args:
         config_path: Path to configuration file
-        
+
     Returns:
         Server configuration
-    
+
     Raises:
         FileNotFoundError: If configuration file is not found
         ValueError: If configuration is invalid
@@ -220,7 +220,7 @@ def load_config(config_path: Optional[str] = None) -> ServerConfig:
     ]
 
     # Load from specified path or try default locations
-    config_data = {}
+    config_data: Dict[str, Any] = {}
     if config_path:
         try:
             with open(config_path, "r") as f:

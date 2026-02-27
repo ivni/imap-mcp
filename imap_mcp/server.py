@@ -12,10 +12,10 @@ from pydantic import AnyHttpUrl
 
 from imap_mcp.config import ServerConfig, load_config
 from imap_mcp.imap_client import ImapClient
+from imap_mcp.mcp_protocol import extend_server
 from imap_mcp.resources import register_resources
 from imap_mcp.smtp_client import verify_smtp_connection
 from imap_mcp.tools import register_tools
-from imap_mcp.mcp_protocol import extend_server
 
 # Set up logging
 logging.basicConfig(
@@ -28,10 +28,10 @@ logger = logging.getLogger("imap_mcp")
 @asynccontextmanager
 async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict]:
     """Server lifespan manager to handle IMAP client lifecycle.
-    
+
     Args:
         server: MCP server instance
-        
+
     Yields:
         Context dictionary containing IMAP client
     """
@@ -41,12 +41,12 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict]:
     if not config:
         # This is a fallback in case we can't find the config
         config = load_config()
-    
+
     if not isinstance(config, ServerConfig):
         raise TypeError("Invalid server configuration")
-    
+
     imap_client = ImapClient(config.imap, config.allowed_folders)
-    
+
     try:
         # Connect to IMAP server
         logger.info("Connecting to IMAP server...")
@@ -150,17 +150,17 @@ def create_server(
         logger.info("OIDC JWT authentication enabled (issuer: %s)", oidc_issuer)
 
     server = FastMCP(**server_kwargs)
-    
+
     # Store config for access in the lifespan
-    server._config = config
-    
+    server._config = config  # type: ignore[attr-defined]
+
     # Create IMAP client for setup (will be recreated in lifespan)
     imap_client = ImapClient(config.imap, config.allowed_folders)
-    
+
     # Register resources and tools
     register_resources(server, imap_client)
     register_tools(server, imap_client)
-    
+
     # Add server status tool
     @server.tool()
     def server_status() -> str:
@@ -190,10 +190,10 @@ def create_server(
             status["smtp"] = "Not configured"
 
         return "\n".join(f"{k}: {v}" for k, v in status.items())
-    
+
     # Apply MCP protocol extension for Claude Desktop compatibility
     server = extend_server(server)
-    
+
     return server
 
 
@@ -201,7 +201,7 @@ def main() -> None:
     """Run the IMAP MCP server."""
     parser = argparse.ArgumentParser(description="IMAP MCP Server")
     parser.add_argument(
-        "--config", 
+        "--config",
         help="Path to configuration file",
         default=os.environ.get("IMAP_MCP_CONFIG"),
     )
@@ -253,7 +253,7 @@ def main() -> None:
     # Start the server
     logger.info("Starting server{}...".format(" in development mode" if args.dev else ""))
     server.run(transport=args.transport)
-    
-    
+
+
 if __name__ == "__main__":
     main()

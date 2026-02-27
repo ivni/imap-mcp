@@ -8,14 +8,13 @@ from unittest import mock
 import jwt
 import pytest
 from jwt import PyJWKClientError
+from mcp.server.auth.provider import AccessToken
 
 from imap_mcp.auth import (
     OIDCJWTVerifier,
     _extract_scopes,
     discover_jwks_uri,
 )
-from mcp.server.auth.provider import AccessToken
-
 
 # --- Fixtures ---
 
@@ -23,8 +22,8 @@ from mcp.server.auth.provider import AccessToken
 @pytest.fixture
 def rsa_keypair():
     """Generate an RSA key pair for test JWT signing/verification."""
-    from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
 
     private_key = rsa.generate_private_key(
         public_exponent=65537,
