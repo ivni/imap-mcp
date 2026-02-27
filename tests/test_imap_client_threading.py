@@ -614,6 +614,74 @@ class TestImapClientThreading(unittest.TestCase):
         assert "Latin-1 text with special chars" in thread_emails[1].content.text
 
 
+class TestFetchThreadInjectionSafety(unittest.TestCase):
+    """Test that fetch_thread passes criteria as lists, not f-strings."""
+
+    def setUp(self) -> None:
+        """Set up test environment."""
+        self.config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        self.mock_client = MagicMock()
+
+        self.imapclient_patcher = patch("imap_mcp.imap_client.imapclient.IMAPClient")
+        self.mock_imapclient = self.imapclient_patcher.start()
+        self.mock_imapclient.return_value = self.mock_client
+
+        self.imap_client = ImapClient(self.config)
+        self.imap_client.connected = True
+        self.imap_client.client = self.mock_client
+
+    def tearDown(self) -> None:
+        """Clean up after tests."""
+        self.imapclient_patcher.stop()
+
+    def test_fetch_thread_uses_parameterized_search(self) -> None:
+        """Verify search criteria are lists (parameterized), not f-strings.
+
+        An attacker-controlled Message-ID like '<x" OR ALL ">' must be passed
+        as a single list element so imapclient quotes it safely, rather than
+        being interpolated into a raw IMAP command string.
+        """
+        malicious_message_id = '<x" OR ALL ">'
+        uid = 500
+
+        # Build the initial email with the malicious Message-ID
+        msg = email.mime.multipart.MIMEMultipart()
+        msg["Message-ID"] = malicious_message_id
+        msg["Subject"] = "Injection Test"
+        msg["From"] = "attacker@example.com"
+        msg["To"] = "victim@example.com"
+        msg["Date"] = email.utils.formatdate()
+
+        text_part = email.mime.text.MIMEText("body", "plain", "utf-8")
+        msg.attach(text_part)
+
+        mock_email_data = {
+            b"BODY[]": msg.as_bytes(),
+            b"FLAGS": (b"\\Seen",),
+        }
+
+        self.mock_client.fetch.side_effect = [
+            {uid: mock_email_data},   # fetch_email (initial)
+            {uid: mock_email_data},   # fetch_emails (thread result)
+        ]
+        self.mock_client.search.return_value = SearchIds([])
+
+        self.imap_client.fetch_thread(uid)
+
+        # Every search call must have received a list, never a string
+        for call in self.mock_client.search.call_args_list:
+            criteria = call[0][0]
+            assert isinstance(criteria, list), (
+                f"Expected list criteria but got {type(criteria).__name__}: {criteria!r}"
+            )
+
+
 class TestImapClientVerifyConnection(unittest.TestCase):
     """Test cases for IMAP connection verification."""
 

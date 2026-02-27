@@ -383,7 +383,7 @@ class ImapClient:
         # Search for emails with this Message-ID in the References or In-Reply-To headers
         if message_id:
             # Look for emails that reference this message ID
-            references_query = f'HEADER References "{message_id}"'
+            references_query = ['HEADER', 'References', message_id]
             try:
                 references_results = self.search(references_query, folder)
                 thread_uids.update(references_results)
@@ -391,7 +391,7 @@ class ImapClient:
                 logger.warning(f"Error searching for References: {e}")
             
             # Look for direct replies to this message
-            inreplyto_query = f'HEADER In-Reply-To "{message_id}"'
+            inreplyto_query = ['HEADER', 'In-Reply-To', message_id]
             try:
                 inreplyto_results = self.search(inreplyto_query, folder)
                 thread_uids.update(inreplyto_results)
@@ -405,7 +405,7 @@ class ImapClient:
             # Extract all message IDs from the References header
             if initial_references:
                 for ref_id in re.findall(r'<[^>]+>', initial_references):
-                    query = f'HEADER Message-ID "{ref_id}"'
+                    query = ['HEADER', 'Message-ID', ref_id]
                     try:
                         results = self.search(query, folder)
                         thread_uids.update(results)
@@ -414,7 +414,7 @@ class ImapClient:
             
             # Look for the message that this is a reply to
             if initial_inreplyto:
-                query = f'HEADER Message-ID "{initial_inreplyto}"'
+                query = ['HEADER', 'Message-ID', initial_inreplyto]
                 try:
                     results = self.search(query, folder)
                     thread_uids.update(results)
@@ -425,7 +425,7 @@ class ImapClient:
         if len(thread_uids) <= 2 and clean_subject:
             # Look for emails with the same or related subject (Re: Subject)
             # This is a fallback for email clients that don't properly use References/In-Reply-To
-            subject_query = f'SUBJECT "{clean_subject}"'
+            subject_query = ['SUBJECT', clean_subject]
             try:
                 subject_results = self.search(subject_query, folder)
                 
