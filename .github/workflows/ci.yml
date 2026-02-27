@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies (hash-verified)
         run: uv sync --frozen --extra dev
 
+      - name: Dependency audit (pip-audit)
+        run: uv run pip-audit
+
       - name: Lint (ruff)
         run: uv run ruff check .
 

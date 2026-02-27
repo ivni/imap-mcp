@@ -33,7 +33,8 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 - Docker standalone: `docker compose -f docker-compose.yml -f docker-compose.standalone.yml up --build`
 - Docker dev: `docker compose --profile dev up imap-mcp-dev --build`
 - Package management: ONLY `uv add <package>` — FORBIDDEN: `pip install`, `@latest` syntax
-- CI: GitHub Actions on push/PR to main — lockfile check, lint, type check, unit tests
+- Dependency audit: `uv run pip-audit`
+- CI: GitHub Actions on push/PR to main — lockfile check, dependency audit, lint, type check, unit tests
 
 ## Architecture
 
@@ -100,6 +101,6 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 
 - GitHub Actions workflow in `.github/workflows/ci.yml`
 - Runs on push to `main` and pull requests targeting `main`
-- Pipeline: lockfile integrity (`uv lock --check`) → install (`uv sync --frozen`) → lint (ruff + mypy) → unit tests
+- Pipeline: lockfile integrity (`uv lock --check`) → install (`uv sync --frozen`) → dependency audit (`pip-audit`) → lint (ruff + mypy) → unit tests
 - Supply chain security: `uv sync --frozen` verifies all dependency hashes against `uv.lock`
 - Production: `Dockerfile` also uses `uv sync --frozen` for hash-verified installs
