@@ -209,17 +209,32 @@ def _extract_meeting_times(email_obj: Email) -> Tuple[Optional[datetime], Option
                 if not start_match:
                     raise ValueError("Could not parse start time")
                 start_hour, start_minute = map(int, start_match.groups())
-                is_start_pm = "PM" in start_time_str.upper() and start_hour < 12
-                if is_start_pm:
-                    start_hour += 12
+                if "PM" in start_time_str.upper():
+                    if start_hour < 12:
+                        start_hour += 12
+                    # 12 PM stays as 12 (noon) — correct
+                elif "AM" in start_time_str.upper():
+                    if start_hour == 12:
+                        start_hour = 0
+                    # Other AM hours stay as-is — correct
+
+                # Validate time values
+                if start_hour > 23 or start_minute > 59:
+                    raise ValueError(f"Invalid start time: {start_hour}:{start_minute}")
 
                 end_match = re.search(r"(\d{1,2})[:](\d{2})", end_time_str)
                 if not end_match:
                     raise ValueError("Could not parse end time")
                 end_hour, end_minute = map(int, end_match.groups())
-                is_end_pm = "PM" in end_time_str.upper() and end_hour < 12
-                if is_end_pm:
-                    end_hour += 12
+                if "PM" in end_time_str.upper():
+                    if end_hour < 12:
+                        end_hour += 12
+                elif "AM" in end_time_str.upper():
+                    if end_hour == 12:
+                        end_hour = 0
+
+                if end_hour > 23 or end_minute > 59:
+                    raise ValueError(f"Invalid end time: {end_hour}:{end_minute}")
 
                 # Create datetime objects
                 start_time = default_date.replace(hour=start_hour, minute=start_minute)

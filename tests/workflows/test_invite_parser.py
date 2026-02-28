@@ -210,3 +210,100 @@ class TestInviteParser:
         """Test extracting meeting description."""
         description = _extract_description(basic_invite_email)
         assert "Project review meeting" in description
+
+
+class TestExtractMeetingTimesAMPM:
+    """Tests for AM/PM time parsing in _extract_meeting_times."""
+
+    def test_12_am_midnight(self) -> None:
+        """Test that 12:00 AM is parsed as midnight (hour 0)."""
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 31, 14, 0, 0),
+            content=EmailContent(text="When: Monday 12:00 AM - 1:00 AM"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert end_time is not None
+        assert start_time.hour == 0
+        assert end_time.hour == 1
+
+    def test_12_pm_noon(self) -> None:
+        """Test that 12:00 PM is parsed as noon (hour 12)."""
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 31, 14, 0, 0),
+            content=EmailContent(text="When: Monday 12:00 PM - 1:00 PM"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert end_time is not None
+        assert start_time.hour == 12
+        assert end_time.hour == 13
+
+    def test_12_30_am(self) -> None:
+        """Test that 12:30 AM is parsed as hour 0, minute 30."""
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 31, 14, 0, 0),
+            content=EmailContent(text="When: Monday 12:30 AM - 1:30 AM"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert start_time.hour == 0
+        assert start_time.minute == 30
+
+    def test_regular_pm(self) -> None:
+        """Test that regular PM times are parsed correctly (regression test)."""
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 31, 14, 0, 0),
+            content=EmailContent(text="When: Monday 2:00 PM - 3:00 PM"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert end_time is not None
+        assert start_time.hour == 14
+        assert end_time.hour == 15
+
+    def test_regular_am(self) -> None:
+        """Test that regular AM times are parsed correctly (regression test)."""
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 31, 14, 0, 0),
+            content=EmailContent(text="When: Monday 9:00 AM - 10:00 AM"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert end_time is not None
+        assert start_time.hour == 9
+        assert end_time.hour == 10
+
+    def test_invalid_time_falls_back_to_email_date(self) -> None:
+        """Test that invalid times trigger fallback to email date."""
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 31, 14, 0, 0),
+            content=EmailContent(text="When: Monday 25:99 AM - 26:99 PM"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert start_time == email_obj.date
