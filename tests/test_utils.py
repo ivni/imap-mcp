@@ -157,7 +157,7 @@ def parse_message_to_dict(message: Message) -> Dict:
     return result
 
 
-def assert_email_equals(email1: Email, email2: Email):
+def assert_email_equals(email1: Email, email2: Email) -> None:
     """Assert that two Email objects are equal in relevant properties."""
     assert email1.message_id == email2.message_id
     assert email1.subject == email2.subject

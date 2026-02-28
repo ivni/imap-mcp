@@ -3,6 +3,7 @@
 import argparse
 import logging
 from contextlib import AsyncExitStack
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -15,7 +16,7 @@ from imap_mcp.server import create_server, main, server_lifespan
 class TestServer:
     """Tests for the server module."""
 
-    def test_create_server(self, monkeypatch):
+    def test_create_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test server creation with default configuration."""
         # Mock the config loading
         mock_config = ServerConfig(
@@ -48,7 +49,7 @@ class TestServer:
                     assert mock_register_resources.called
                     assert mock_register_tools.called
 
-    def test_create_server_with_debug(self):
+    def test_create_server_with_debug(self) -> None:
         """Test server creation with debug mode enabled."""
         mock_config = ServerConfig(
             imap=ImapConfig(
@@ -64,7 +65,7 @@ class TestServer:
                 create_server(debug=True)
                 mock_logger.setLevel.assert_called_with(logging.DEBUG)
 
-    def test_create_server_with_config_path(self):
+    def test_create_server_with_config_path(self) -> None:
         """Test server creation with a specific config path."""
         config_path = "test_config.yaml"
 
@@ -73,7 +74,7 @@ class TestServer:
             mock_load_config.assert_called_with(config_path)
 
     @pytest.mark.asyncio
-    async def test_server_lifespan(self):
+    async def test_server_lifespan(self) -> None:
         """Test server lifespan context manager."""
         # Create mock server with config
         mock_server = mock.MagicMock()
@@ -111,7 +112,7 @@ class TestServer:
             mock_client.disconnect.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_server_lifespan_fallback_config(self):
+    async def test_server_lifespan_fallback_config(self) -> None:
         """Test server lifespan with fallback config loading."""
         # Create mock server without config
         mock_server = mock.MagicMock()
@@ -138,7 +139,7 @@ class TestServer:
                     mock_load_config.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_server_lifespan_invalid_config(self):
+    async def test_server_lifespan_invalid_config(self) -> None:
         """Test server lifespan with invalid config."""
         # Create mock server with invalid config
         mock_server = mock.MagicMock()
@@ -150,7 +151,7 @@ class TestServer:
                 pass
 
     @pytest.mark.asyncio
-    async def test_server_lifespan_with_smtp(self):
+    async def test_server_lifespan_with_smtp(self) -> None:
         """Test server lifespan passes SMTP config in context and verifies SMTP."""
         mock_server = mock.MagicMock()
         smtp_config = SmtpConfig(
@@ -182,7 +183,7 @@ class TestServer:
                     mock_verify_smtp.assert_called_once_with(smtp_config)
 
     @pytest.mark.asyncio
-    async def test_server_lifespan_without_smtp(self):
+    async def test_server_lifespan_without_smtp(self) -> None:
         """Test server lifespan omits smtp_config when not configured."""
         mock_server = mock.MagicMock()
         mock_config = ServerConfig(
@@ -202,7 +203,7 @@ class TestServer:
 
                 assert "smtp_config" not in context
 
-    def test_server_status_tool(self):
+    def test_server_status_tool(self) -> None:
         """Test the server_status tool."""
         # Mock the config
         mock_config = ServerConfig(
@@ -224,8 +225,8 @@ class TestServer:
         original_tool = FastMCP.tool
         captured_tool = None
 
-        def mock_tool(self, **kwargs):
-            def decorator(func):
+        def mock_tool(self: Any, **kwargs: Any) -> Any:
+            def decorator(func: Any) -> Any:
                 nonlocal captured_tool
                 captured_tool = func
                 return original_tool(self)(func)
@@ -248,7 +249,7 @@ class TestServer:
 
         # Since we can't directly test the server_status tool, we'll create a simplified
         # version based on the implementation and test that
-        def test_server_status():
+        def test_server_status() -> None:
             status = {
                 "server": "IMAP MCP",
                 "imap_host": mock_config.imap.host,
@@ -271,7 +272,7 @@ class TestServer:
         assert "test@example.com" in result
         assert "INBOX" in result or "Sent" in result
 
-    def test_main_function(self):
+    def test_main_function(self) -> None:
         """Test the main function."""
         # Mock command line arguments
         test_args = ["--config", "test_config.yaml", "--debug", "--dev"]
@@ -315,7 +316,7 @@ class TestServer:
                         call_args = mock_logger.info.call_args[0][0]
                         assert "Starting server in development mode" in call_args
 
-    def test_main_env_config(self, monkeypatch):
+    def test_main_env_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test main function with config from environment variable."""
         # Set environment variable for config
         monkeypatch.setenv("IMAP_MCP_CONFIG", "env_config.yaml")
@@ -347,7 +348,7 @@ class TestServer:
                         "env_config.yaml", False, "stdio", "127.0.0.1", 8010
                     )
 
-    def test_main_streamable_http_transport(self):
+    def test_main_streamable_http_transport(self) -> None:
         """Test main function with streamable-http transport."""
         with mock.patch("imap_mcp.server.create_server") as mock_create_server:
             with mock.patch("imap_mcp.server.argparse.ArgumentParser.parse_args") as mock_parse_args:
@@ -374,7 +375,7 @@ class TestServer:
                     transport="streamable-http"
                 )
 
-    def test_main_transport_from_env(self, monkeypatch):
+    def test_main_transport_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that transport settings are read from environment variables."""
         monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
         monkeypatch.setenv("MCP_HOST", "0.0.0.0")
@@ -394,7 +395,7 @@ class TestServer:
                     transport="streamable-http"
                 )
 
-    def test_create_server_with_http_transport(self, monkeypatch):
+    def test_create_server_with_http_transport(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that host/port are passed to FastMCP for streamable-http."""
         monkeypatch.setenv("OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/")
         monkeypatch.setenv("OIDC_JWKS_URI", "https://auth.example.com/jwks/")
@@ -421,7 +422,7 @@ class TestServer:
                 assert call_kwargs.kwargs.get("host") == "0.0.0.0"
                 assert call_kwargs.kwargs.get("port") == 8010
 
-    def test_create_server_stdio_no_host_port(self):
+    def test_create_server_stdio_no_host_port(self) -> None:
         """Test that host/port are NOT passed to FastMCP for stdio transport."""
         mock_config = ServerConfig(
             imap=ImapConfig(
@@ -442,7 +443,7 @@ class TestServer:
                 assert "port" not in call_kwargs.kwargs
 
     @pytest.mark.asyncio
-    async def test_server_lifespan_imap_verify_failure(self):
+    async def test_server_lifespan_imap_verify_failure(self) -> None:
         """Test that server fails to start when IMAP verification fails."""
         mock_server = mock.MagicMock()
         mock_config = ServerConfig(
@@ -468,7 +469,7 @@ class TestServer:
             mock_client.disconnect.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_server_lifespan_smtp_verify_failure_still_starts(self):
+    async def test_server_lifespan_smtp_verify_failure_still_starts(self) -> None:
         """Test that server starts even when SMTP verification fails."""
         mock_server = mock.MagicMock()
         smtp_config = SmtpConfig(
@@ -523,7 +524,7 @@ class TestServerOIDCAuth:
             ),
         )
 
-    def test_oidc_auth_enabled(self, monkeypatch):
+    def test_oidc_auth_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that OIDC JWT auth is configured when OIDC_ISSUER_URL is set."""
         monkeypatch.setenv("OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/")
         monkeypatch.delenv("OIDC_JWKS_URI", raising=False)
@@ -535,7 +536,7 @@ class TestServerOIDCAuth:
                 from imap_mcp.auth import OIDCJWTVerifier
                 assert isinstance(server._token_verifier, OIDCJWTVerifier)
 
-    def test_missing_issuer_raises_error(self, monkeypatch):
+    def test_missing_issuer_raises_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that ValueError is raised when OIDC_ISSUER_URL is missing for HTTP."""
         monkeypatch.delenv("OIDC_ISSUER_URL", raising=False)
 
@@ -543,7 +544,7 @@ class TestServerOIDCAuth:
             with pytest.raises(ValueError, match="OIDC_ISSUER_URL is required"):
                 create_server(transport="streamable-http")
 
-    def test_explicit_jwks_uri_skips_discovery(self, monkeypatch):
+    def test_explicit_jwks_uri_skips_discovery(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that explicit OIDC_JWKS_URI skips OIDC discovery."""
         monkeypatch.setenv("OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/")
         monkeypatch.setenv("OIDC_JWKS_URI", "https://auth.example.com/custom/jwks/")
@@ -553,7 +554,7 @@ class TestServerOIDCAuth:
                 create_server(transport="streamable-http")
                 mock_discover.assert_not_called()
 
-    def test_stdio_no_auth(self, monkeypatch):
+    def test_stdio_no_auth(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that auth is not configured for stdio transport."""
         monkeypatch.setenv("OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/")
 
@@ -561,7 +562,7 @@ class TestServerOIDCAuth:
             server = create_server(transport="stdio")
             assert server._token_verifier is None
 
-    def test_resource_server_url_from_env(self, monkeypatch):
+    def test_resource_server_url_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that MCP_RESOURCE_SERVER_URL is used in AuthSettings."""
         monkeypatch.setenv("OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/")
         monkeypatch.setenv("MCP_RESOURCE_SERVER_URL", "https://mcp.example.com/mcp")

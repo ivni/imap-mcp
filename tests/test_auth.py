@@ -2,11 +2,12 @@
 
 import json
 import time
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 from unittest import mock
 
 import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from jwt import PyJWKClientError
 from mcp.server.auth.provider import AccessToken
 
@@ -20,7 +21,7 @@ from imap_mcp.auth import (
 
 
 @pytest.fixture
-def rsa_keypair():
+def rsa_keypair() -> tuple[bytes, RSAPublicKey]:
     """Generate an RSA key pair for test JWT signing/verification."""
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
@@ -54,7 +55,7 @@ def valid_jwt_claims() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def make_signed_jwt(rsa_keypair, valid_jwt_claims):
+def make_signed_jwt(rsa_keypair: tuple[bytes, RSAPublicKey], valid_jwt_claims: Dict[str, Any]) -> Callable[..., str]:
     """Factory fixture to create signed JWTs."""
     private_pem, _ = rsa_keypair
 
@@ -78,7 +79,7 @@ def make_signed_jwt(rsa_keypair, valid_jwt_claims):
 class TestExtractScopes:
     """Tests for scope extraction from JWT claims."""
 
-    def test_space_delimited_string(self):
+    def test_space_delimited_string(self) -> None:
         """Test standard OAuth 2.0 space-delimited scope string."""
         assert _extract_scopes({"scope": "openid email profile"}) == [
             "openid",
@@ -86,22 +87,22 @@ class TestExtractScopes:
             "profile",
         ]
 
-    def test_list_format(self):
+    def test_list_format(self) -> None:
         """Test list-formatted scope claim."""
         assert _extract_scopes({"scope": ["openid", "email"]}) == [
             "openid",
             "email",
         ]
 
-    def test_empty_string(self):
+    def test_empty_string(self) -> None:
         """Test empty scope string."""
         assert _extract_scopes({"scope": ""}) == []
 
-    def test_missing_scope(self):
+    def test_missing_scope(self) -> None:
         """Test missing scope claim."""
         assert _extract_scopes({"sub": "user"}) == []
 
-    def test_single_scope(self):
+    def test_single_scope(self) -> None:
         """Test single scope."""
         assert _extract_scopes({"scope": "openid"}) == ["openid"]
 
@@ -116,7 +117,7 @@ class TestOIDCJWTVerifier:
     JWKS_URI = "https://auth.example.com/application/o/test-app/jwks/"
 
     @pytest.mark.asyncio
-    async def test_valid_jwt(self, rsa_keypair, make_signed_jwt):
+    async def test_valid_jwt(self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]) -> None:
         """Test successful JWT validation returns AccessToken."""
         _, public_key = rsa_keypair
         token = make_signed_jwt()
@@ -136,7 +137,7 @@ class TestOIDCJWTVerifier:
         assert result.expires_at is not None
 
     @pytest.mark.asyncio
-    async def test_expired_jwt(self, rsa_keypair, make_signed_jwt):
+    async def test_expired_jwt(self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]) -> None:
         """Test that expired JWT returns None."""
         _, public_key = rsa_keypair
         token = make_signed_jwt({"exp": int(time.time()) - 100})
@@ -151,7 +152,7 @@ class TestOIDCJWTVerifier:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_wrong_issuer(self, rsa_keypair, make_signed_jwt):
+    async def test_wrong_issuer(self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]) -> None:
         """Test that JWT with wrong issuer returns None."""
         _, public_key = rsa_keypair
         token = make_signed_jwt({"iss": "https://evil.example.com/"})
@@ -166,7 +167,7 @@ class TestOIDCJWTVerifier:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_audience_validation_pass(self, rsa_keypair, make_signed_jwt):
+    async def test_audience_validation_pass(self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]) -> None:
         """Test that JWT with correct audience passes validation."""
         _, public_key = rsa_keypair
         token = make_signed_jwt({"aud": "my-mcp-server"})
@@ -183,7 +184,7 @@ class TestOIDCJWTVerifier:
         assert result is not None
 
     @pytest.mark.asyncio
-    async def test_audience_validation_fail(self, rsa_keypair, make_signed_jwt):
+    async def test_audience_validation_fail(self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]) -> None:
         """Test that JWT with wrong audience returns None."""
         _, public_key = rsa_keypair
         token = make_signed_jwt({"aud": "wrong-audience"})
@@ -201,8 +202,8 @@ class TestOIDCJWTVerifier:
 
     @pytest.mark.asyncio
     async def test_no_audience_validation_when_not_configured(
-        self, rsa_keypair, make_signed_jwt
-    ):
+        self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]
+    ) -> None:
         """Test that audience is not checked when not configured."""
         _, public_key = rsa_keypair
         token = make_signed_jwt()
@@ -219,7 +220,7 @@ class TestOIDCJWTVerifier:
         assert result is not None
 
     @pytest.mark.asyncio
-    async def test_malformed_jwt(self):
+    async def test_malformed_jwt(self) -> None:
         """Test that malformed JWT returns None."""
         verifier = OIDCJWTVerifier(issuer=self.ISSUER, jwks_uri=self.JWKS_URI)
 
@@ -233,7 +234,7 @@ class TestOIDCJWTVerifier:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_jwks_fetch_failure(self):
+    async def test_jwks_fetch_failure(self) -> None:
         """Test that JWKS fetch failure returns None."""
         verifier = OIDCJWTVerifier(issuer=self.ISSUER, jwks_uri=self.JWKS_URI)
 
@@ -247,7 +248,7 @@ class TestOIDCJWTVerifier:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_client_id_from_azp(self, rsa_keypair, make_signed_jwt):
+    async def test_client_id_from_azp(self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]) -> None:
         """Test that client_id is extracted from 'azp' claim."""
         _, public_key = rsa_keypair
         token = make_signed_jwt({"azp": "my-client-id"})
@@ -263,7 +264,7 @@ class TestOIDCJWTVerifier:
         assert result.client_id == "my-client-id"
 
     @pytest.mark.asyncio
-    async def test_client_id_fallback(self, rsa_keypair, make_signed_jwt):
+    async def test_client_id_fallback(self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]) -> None:
         """Test client_id falls back to 'client_id' claim when 'azp' is absent."""
         _, public_key = rsa_keypair
         token = make_signed_jwt({"azp": None, "client_id": "fallback-client"})
@@ -285,7 +286,7 @@ class TestOIDCJWTVerifier:
 class TestDiscoverJWKSUri:
     """Tests for OIDC discovery of JWKS URI."""
 
-    def test_successful_discovery(self):
+    def test_successful_discovery(self) -> None:
         """Test successful OIDC discovery returns jwks_uri."""
         discovery_response = json.dumps(
             {
@@ -307,7 +308,7 @@ class TestDiscoverJWKSUri:
 
         assert result == "https://auth.example.com/application/o/test/jwks/"
 
-    def test_discovery_failure_falls_back(self):
+    def test_discovery_failure_falls_back(self) -> None:
         """Test that discovery failure falls back to constructed URL."""
         with mock.patch(
             "urllib.request.urlopen", side_effect=Exception("Connection refused")
@@ -318,7 +319,7 @@ class TestDiscoverJWKSUri:
 
         assert result == "https://auth.example.com/application/o/test/jwks/"
 
-    def test_trailing_slash_handling(self):
+    def test_trailing_slash_handling(self) -> None:
         """Test that trailing slash is handled correctly in discovery URL."""
         discovery_response = json.dumps(
             {"jwks_uri": "https://auth.example.com/jwks/"}

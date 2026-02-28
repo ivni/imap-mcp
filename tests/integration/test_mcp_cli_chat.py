@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import pytest
 
@@ -31,7 +31,7 @@ SERVER_CONFIG_FILE = MCP_CLI_DIR / "server_config.json"
 class ChatSession:
     """Helper class to manage an interactive chat session with mcp-cli."""
 
-    def __init__(self, server="imap", model="llama3.2", provider="ollama"):
+    def __init__(self, server: str = "imap", model: str = "llama3.2", provider: str = "ollama") -> None:
         """Initialize chat session with specified server and model."""
         self.server = server
         self.model = model
@@ -176,7 +176,7 @@ class ChatSession:
         self.outputs.append(output)
         return output
 
-    def _read_nonblocking(self, stream) -> str:
+    def _read_nonblocking(self, stream: Any) -> str:
         """Non-blocking read from a stream."""
         import select
 
@@ -238,7 +238,7 @@ class TestMcpCliChatMode:
     """Test the mcp-cli in chat mode with the IMAP server."""
 
     @pytest.fixture(scope="class", autouse=True)
-    def setup_mcp_cli(self):
+    def setup_mcp_cli(self) -> None:
         """Ensure MCP CLI dependencies are installed."""
         # Save current directory
         original_dir = os.getcwd()
@@ -267,7 +267,7 @@ class TestMcpCliChatMode:
             os.chdir(original_dir)
 
     @pytest.fixture(scope="function")
-    def chat_session(self):
+    def chat_session(self) -> None:
         """Initialize and tear down a chat session for each test."""
         session = ChatSession(server="imap")
 
@@ -278,7 +278,7 @@ class TestMcpCliChatMode:
 
         session.stop()
 
-    def test_server_and_tool_commands(self, chat_session):
+    def test_server_and_tool_commands(self, chat_session: Any) -> None:
         """Test /servers and /tools commands in chat mode."""
         # Check servers command
         servers_output = chat_session.send_command("/servers")
@@ -292,7 +292,7 @@ class TestMcpCliChatMode:
         for tool in email_tools:
             assert tool in tools_output, f"Tool '{tool}' not found in /tools output"
 
-    def test_natural_language_email_listing(self, chat_session):
+    def test_natural_language_email_listing(self, chat_session: Any) -> None:
         """Test natural language request to list unread emails."""
         # First make sure we're using the IMAP server
         chat_session.send_command("/server imap")
@@ -322,7 +322,7 @@ class TestMcpCliChatMode:
 
         assert pattern_found, "Response doesn't contain expected email list format"
 
-    def test_email_pagination(self, chat_session):
+    def test_email_pagination(self, chat_session: Any) -> None:
         """Test email pagination functionality."""
         # First make sure we're using the IMAP server
         chat_session.send_command("/server imap")
@@ -343,7 +343,7 @@ class TestMcpCliChatMode:
         # Ideally, we'd verify the emails are different between pages,
         # but that would require parsing the output which might be complex
 
-    def test_direct_tool_call(self, chat_session):
+    def test_direct_tool_call(self, chat_session: Any) -> None:
         """Test calling list_unread_emails tool directly."""
         # First make sure we're using the IMAP server
         chat_session.send_command("/server imap")

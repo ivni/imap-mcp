@@ -3,6 +3,7 @@
 import json
 import os
 from datetime import datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,7 +16,7 @@ from imap_mcp.tools import register_tools, require_confirmation
 # --- Shared fixtures ---
 
 @pytest.fixture
-def mock_email():
+def mock_email() -> Any:
     """Create a mock email object."""
     return Email(
         message_id="<test123@example.com>",
@@ -35,7 +36,7 @@ def mock_email():
 
 
 @pytest.fixture
-def mock_client(mock_email):
+def mock_client(mock_email: Any) -> Any:
     """Create a mock IMAP client."""
     client = MagicMock(spec=ImapClient)
     client.move_email.return_value = True
@@ -49,13 +50,13 @@ def mock_client(mock_email):
 
 
 @pytest.fixture
-def tools(mock_client):
+def tools(mock_client: Any) -> Any:
     """Register and return MCP tools backed by mock_client."""
     mcp = MagicMock(spec=FastMCP)
     stored_tools = {}
 
-    def mock_tool_decorator(**kwargs):
-        def decorator(func):
+    def mock_tool_decorator(**kwargs: Any) -> Any:
+        def decorator(func: Any) -> Any:
             stored_tools[func.__name__] = func
             return func
         return decorator
@@ -65,7 +66,7 @@ def tools(mock_client):
     return stored_tools
 
 
-def _make_elicit_result(action="accept", confirmed=True):
+def _make_elicit_result(action: str = "accept", confirmed: bool = True) -> MagicMock:
     """Helper to create a mock elicitation result."""
     result = MagicMock()
     result.action = action
@@ -75,7 +76,7 @@ def _make_elicit_result(action="accept", confirmed=True):
     return result
 
 
-def _make_confirmed_context():
+def _make_confirmed_context() -> MagicMock:
     """Create a mock context where user confirms all actions."""
     context = MagicMock(spec=Context)
     context.elicit = AsyncMock(return_value=_make_elicit_result("accept", True))
@@ -86,14 +87,14 @@ class TestTools:
     """Test class for MCP tools."""
 
     @pytest.fixture(autouse=True)
-    def patch_get_client(self, mock_client):
+    def patch_get_client(self, mock_client: Any) -> None:
         """Patch get_client_from_context for this class only."""
         with patch('imap_mcp.tools.get_client_from_context') as mock_get_client:
             mock_get_client.return_value = mock_client
             yield mock_get_client
 
     @pytest.fixture
-    def mock_context(self):
+    def mock_context(self) -> Any:
         """Create a mock context with elicitation support.
 
         Default: user confirms all actions (accept + confirmed=True).
@@ -101,7 +102,7 @@ class TestTools:
         return _make_confirmed_context()
 
     @pytest.mark.asyncio
-    async def test_move_email(self, tools, mock_client, mock_context):
+    async def test_move_email(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
         """Test moving an email from one folder to another."""
         # Get the move_email function
         move_email = tools["move_email"]
@@ -121,7 +122,7 @@ class TestTools:
         assert "Error" in result
 
     @pytest.mark.asyncio
-    async def test_mark_as_read(self, tools, mock_client, mock_context):
+    async def test_mark_as_read(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
         """Test marking an email as read."""
         # Get the mark_as_read function
         mark_as_read = tools["mark_as_read"]
@@ -141,7 +142,7 @@ class TestTools:
         assert "Failed to mark email as read" in result
 
     @pytest.mark.asyncio
-    async def test_mark_as_unread(self, tools, mock_client, mock_context):
+    async def test_mark_as_unread(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
         """Test marking an email as unread."""
         # Get the mark_as_unread function
         mark_as_unread = tools["mark_as_unread"]
@@ -165,7 +166,7 @@ class TestTools:
         assert "Error" in result
 
     @pytest.mark.asyncio
-    async def test_flag_email(self, tools, mock_client, mock_context):
+    async def test_flag_email(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
         """Test flagging and unflagging an email."""
         # Get the flag_email function
         flag_email = tools["flag_email"]
@@ -188,7 +189,7 @@ class TestTools:
         assert "Email unflagged" in result
 
     @pytest.mark.asyncio
-    async def test_delete_email(self, tools, mock_client, mock_context):
+    async def test_delete_email(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
         """Test deleting an email."""
         # Get the delete_email function
         delete_email = tools["delete_email"]
@@ -213,7 +214,7 @@ class TestTools:
         assert "Error" in result
 
     @pytest.mark.asyncio
-    async def test_search_emails(self, tools, mock_client, mock_context, mock_email):
+    async def test_search_emails(self, tools: Any, mock_client: Any, mock_context: Any, mock_email: Any) -> None:
         """Test searching for emails."""
         # Get the search_emails function
         search_emails = tools["search_emails"]
@@ -257,7 +258,7 @@ class TestTools:
         assert "Invalid search criteria" in result
 
     @pytest.mark.asyncio
-    async def test_process_email(self, tools, mock_client, mock_context):
+    async def test_process_email(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
         """Test processing an email with multiple actions."""
         # Get the process_email function
         process_email = tools["process_email"]
@@ -323,7 +324,7 @@ class TestTools:
         assert "not found" in result
 
     @pytest.mark.asyncio
-    async def test_tool_error_handling(self, tools, mock_client, mock_context):
+    async def test_tool_error_handling(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
         """Test error handling in tools."""
         # Get tools to test
         move_email = tools["move_email"]
@@ -347,7 +348,7 @@ class TestTools:
         assert "[]" in result or result == "[]"
 
     @pytest.mark.asyncio
-    async def test_tool_parameter_validation(self, tools, mock_client, mock_context):
+    async def test_tool_parameter_validation(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
         """Test parameter validation in tools."""
         # Get tools to test
         search_emails = tools["search_emails"]
@@ -370,40 +371,40 @@ class TestConfirmation:
     """Tests for destructive action confirmation mechanism."""
 
     @pytest.fixture
-    def confirmed_context(self):
+    def confirmed_context(self) -> Any:
         """Context where user confirms the action."""
         return _make_confirmed_context()
 
     @pytest.fixture
-    def declined_context(self):
+    def declined_context(self) -> Any:
         """Context where user declines the action."""
         context = MagicMock(spec=Context)
         context.elicit = AsyncMock(return_value=_make_elicit_result("decline"))
         return context
 
     @pytest.fixture
-    def cancelled_context(self):
+    def cancelled_context(self) -> Any:
         """Context where user cancels the action."""
         context = MagicMock(spec=Context)
         context.elicit = AsyncMock(return_value=_make_elicit_result("cancel"))
         return context
 
     @pytest.fixture
-    def not_confirmed_context(self):
+    def not_confirmed_context(self) -> Any:
         """Context where user accepts but sets confirmed=False."""
         context = MagicMock(spec=Context)
         context.elicit = AsyncMock(return_value=_make_elicit_result("accept", False))
         return context
 
     @pytest.fixture
-    def unsupported_context(self):
+    def unsupported_context(self) -> Any:
         """Context where elicitation is not supported."""
         context = MagicMock(spec=Context)
         context.elicit = AsyncMock(side_effect=Exception("elicitation not supported"))
         return context
 
     @pytest.mark.asyncio
-    async def test_delete_email_confirmation_declined(self, tools, mock_client, declined_context):
+    async def test_delete_email_confirmation_declined(self, tools: Any, mock_client: Any, declined_context: Any) -> None:
         """Test that declining confirmation prevents deletion."""
         delete_email = tools["delete_email"]
 
@@ -414,7 +415,7 @@ class TestConfirmation:
         mock_client.delete_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_delete_email_confirmation_not_confirmed(self, tools, mock_client, not_confirmed_context):
+    async def test_delete_email_confirmation_not_confirmed(self, tools: Any, mock_client: Any, not_confirmed_context: Any) -> None:
         """Test that accepting with confirmed=False prevents deletion."""
         delete_email = tools["delete_email"]
 
@@ -425,7 +426,7 @@ class TestConfirmation:
         mock_client.delete_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_delete_email_confirmation_cancelled(self, tools, mock_client, cancelled_context):
+    async def test_delete_email_confirmation_cancelled(self, tools: Any, mock_client: Any, cancelled_context: Any) -> None:
         """Test that cancelling confirmation prevents deletion."""
         delete_email = tools["delete_email"]
 
@@ -436,7 +437,7 @@ class TestConfirmation:
         mock_client.delete_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_move_email_confirmation_declined(self, tools, mock_client, declined_context):
+    async def test_move_email_confirmation_declined(self, tools: Any, mock_client: Any, declined_context: Any) -> None:
         """Test that declining confirmation prevents move."""
         move_email = tools["move_email"]
 
@@ -447,7 +448,7 @@ class TestConfirmation:
         mock_client.move_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_process_email_delete_requires_confirmation(self, tools, mock_client, declined_context):
+    async def test_process_email_delete_requires_confirmation(self, tools: Any, mock_client: Any, declined_context: Any) -> None:
         """Test that process_email with delete action requires confirmation."""
         process_email = tools["process_email"]
 
@@ -458,7 +459,7 @@ class TestConfirmation:
         mock_client.delete_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_process_email_move_requires_confirmation(self, tools, mock_client, declined_context):
+    async def test_process_email_move_requires_confirmation(self, tools: Any, mock_client: Any, declined_context: Any) -> None:
         """Test that process_email with move action requires confirmation."""
         process_email = tools["process_email"]
 
@@ -469,7 +470,7 @@ class TestConfirmation:
         mock_client.move_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_process_email_read_no_confirmation(self, tools, mock_client, confirmed_context):
+    async def test_process_email_read_no_confirmation(self, tools: Any, mock_client: Any, confirmed_context: Any) -> None:
         """Test that process_email with read action does NOT require confirmation."""
         process_email = tools["process_email"]
 
@@ -480,7 +481,7 @@ class TestConfirmation:
         confirmed_context.elicit.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_process_email_flag_no_confirmation(self, tools, mock_client, confirmed_context):
+    async def test_process_email_flag_no_confirmation(self, tools: Any, mock_client: Any, confirmed_context: Any) -> None:
         """Test that process_email with flag action does NOT require confirmation."""
         process_email = tools["process_email"]
 
@@ -491,7 +492,7 @@ class TestConfirmation:
         confirmed_context.elicit.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_elicitation_not_supported_aborts_delete(self, tools, mock_client, unsupported_context):
+    async def test_elicitation_not_supported_aborts_delete(self, tools: Any, mock_client: Any, unsupported_context: Any) -> None:
         """Test that when elicitation raises, delete is aborted for safety."""
         delete_email = tools["delete_email"]
 
@@ -502,7 +503,7 @@ class TestConfirmation:
         mock_client.delete_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_skip_confirmation_env_var(self, tools, mock_client, declined_context):
+    async def test_skip_confirmation_env_var(self, tools: Any, mock_client: Any, declined_context: Any) -> None:
         """Test that IMAP_MCP_SKIP_CONFIRMATION=true bypasses confirmation."""
         delete_email = tools["delete_email"]
 
@@ -519,7 +520,7 @@ class TestRequireConfirmation:
     """Tests for the require_confirmation helper function."""
 
     @pytest.mark.asyncio
-    async def test_confirmation_message_excludes_email_content(self):
+    async def test_confirmation_message_excludes_email_content(self) -> None:
         """Verify confirmation message contains only UID and folder, not email content."""
         ctx = MagicMock(spec=Context)
         ctx.elicit = AsyncMock(return_value=_make_elicit_result("accept", True))
@@ -537,7 +538,7 @@ class TestRequireConfirmation:
         assert "Test content" not in message
 
     @pytest.mark.asyncio
-    async def test_confirmation_message_includes_target_folder_for_move(self):
+    async def test_confirmation_message_includes_target_folder_for_move(self) -> None:
         """Verify move confirmation includes target folder."""
         ctx = MagicMock(spec=Context)
         ctx.elicit = AsyncMock(return_value=_make_elicit_result("accept", True))
@@ -550,7 +551,7 @@ class TestRequireConfirmation:
         assert "42" in message
 
     @pytest.mark.asyncio
-    async def test_returns_false_on_decline(self):
+    async def test_returns_false_on_decline(self) -> None:
         """Verify require_confirmation returns False on decline."""
         ctx = MagicMock(spec=Context)
         ctx.elicit = AsyncMock(return_value=_make_elicit_result("decline"))
@@ -559,7 +560,7 @@ class TestRequireConfirmation:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_returns_true_on_accept_confirmed(self):
+    async def test_returns_true_on_accept_confirmed(self) -> None:
         """Verify require_confirmation returns True on accept+confirmed."""
         ctx = MagicMock(spec=Context)
         ctx.elicit = AsyncMock(return_value=_make_elicit_result("accept", True))
@@ -568,7 +569,7 @@ class TestRequireConfirmation:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_returns_false_on_exception(self):
+    async def test_returns_false_on_exception(self) -> None:
         """Verify require_confirmation returns False when elicitation raises."""
         ctx = MagicMock(spec=Context)
         ctx.elicit = AsyncMock(side_effect=Exception("not supported"))
@@ -577,7 +578,7 @@ class TestRequireConfirmation:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_skip_via_env_var(self):
+    async def test_skip_via_env_var(self) -> None:
         """Verify IMAP_MCP_SKIP_CONFIRMATION=true skips elicitation."""
         ctx = MagicMock(spec=Context)
         ctx.elicit = AsyncMock(side_effect=AssertionError("should not be called"))

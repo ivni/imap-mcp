@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -27,7 +28,7 @@ pytestmark = pytest.mark.integration
 PROJECT_ROOT = Path.cwd()
 SERVER_SCRIPT = PROJECT_ROOT / "scripts" / "run_imap_mcp_server.sh"
 
-def run_server_command(args=None):
+def run_server_command(args: list[str] | None = None) -> tuple[int, str]:
     """Run the IMAP MCP server with specified arguments and return the result."""
     if args is None:
         args = ["--dev"]
@@ -72,7 +73,7 @@ def run_server_command(args=None):
 class TestImapMcpServerBasic:
     """Basic tests for the IMAP MCP server functionality."""
 
-    def test_server_help_command(self):
+    def test_server_help_command(self) -> None:
         """Test that the server script responds to --help properly."""
         returncode, log_content = run_server_command(["--help"])
 
@@ -84,7 +85,7 @@ class TestImapMcpServerBasic:
         assert "--config CONFIG" in log_content, "Config option not found in help"
         assert "--dev" in log_content, "Dev option not found in help"
 
-    def test_server_version_command(self):
+    def test_server_version_command(self) -> None:
         """Test that the server script responds to --version properly."""
         returncode, log_content = run_server_command(["--version"])
 
@@ -94,7 +95,7 @@ class TestImapMcpServerBasic:
         # Check for version information
         assert "version" in log_content.lower(), "Version information not found"
 
-    def test_server_connects_to_gmail(self):
+    def test_server_connects_to_gmail(self) -> None:
         """Verify that the server can connect to Gmail."""
         returncode, log_content = run_server_command(["--dev"])
 
@@ -111,7 +112,7 @@ class TestImapMcpServerBasic:
         # Verify clean disconnection
         assert "Disconnected from IMAP server" in log_content, "Did not disconnect cleanly"
 
-    def test_server_starts_in_dev_mode(self):
+    def test_server_starts_in_dev_mode(self) -> None:
         """Verify that the server starts in development mode."""
         returncode, log_content = run_server_command(["--dev"])
 
@@ -121,7 +122,7 @@ class TestImapMcpServerBasic:
         # Verify development mode
         assert "Starting server in development mode" in log_content, "Server not in development mode"
 
-    def test_server_config_loading(self):
+    def test_server_config_loading(self) -> None:
         """Verify that the server loads its configuration correctly."""
         returncode, log_content = run_server_command(["--dev"])
 
@@ -131,7 +132,7 @@ class TestImapMcpServerBasic:
         # Verify config loading
         assert "Loaded configuration from config.yaml" in log_content, "Failed to load configuration"
 
-    def find_available_tools(self, log_content):
+    def find_available_tools(self, log_content: Any) -> Any:
         """Extract available tools from the server log."""
         tools = []
         for line in log_content.splitlines():
@@ -141,7 +142,7 @@ class TestImapMcpServerBasic:
         return tools
 
     @pytest.mark.skip("Skip until debug mode is properly configured")
-    def test_list_available_tools(self):
+    def test_list_available_tools(self) -> None:
         """Test that the server reports its available tools in debug mode."""
         returncode, log_content = run_server_command(["--dev", "--debug"])
 
@@ -165,7 +166,7 @@ class TestImapMcpServerBasic:
             assert tool_exists, f"Expected tool '{tool}' was not found in registered tools"
 
     @pytest.mark.skip("Currently, direct tool execution is not supported via command line")
-    def test_search_unread_emails(self):
+    def test_search_unread_emails(self) -> None:
         """Test the search_emails tool for finding unread emails."""
         # Parameters for the search_emails tool
 
@@ -177,7 +178,7 @@ class TestEmailToolsIntegration:
     """Tests for the email-related tools in the IMAP MCP server."""
 
     @pytest.mark.skip("Currently, direct tool execution is not supported via command line")
-    def test_list_folders(self):
+    def test_list_folders(self) -> None:
         """Test the get_folders tool."""
         # This test is skipped as the server doesn't support direct tool execution via command line
         # Instead, use the mcp-cli to execute tools as shown in test_mcp_cli_integration.py

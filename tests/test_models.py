@@ -12,7 +12,7 @@ from imap_mcp.models import Email, EmailAddress, decode_mime_header
 class TestModels(unittest.TestCase):
     """Test cases for email models."""
 
-    def test_decode_mime_header(self):
+    def test_decode_mime_header(self) -> None:
         """Test MIME header decoding."""
         # Test ASCII header
         self.assertEqual(decode_mime_header("Hello"), "Hello")
@@ -25,7 +25,7 @@ class TestModels(unittest.TestCase):
         self.assertEqual(decode_mime_header(None), "")
         self.assertEqual(decode_mime_header(""), "")
 
-    def test_email_address_parse(self):
+    def test_email_address_parse(self) -> None:
         """Test email address parsing."""
         # Test name + address
         addr = EmailAddress.parse("John Doe <john@example.com>")
@@ -48,7 +48,7 @@ class TestModels(unittest.TestCase):
         addr = EmailAddress("", "jane@example.com")
         self.assertEqual(str(addr), "jane@example.com")
 
-    def test_email_from_message(self):
+    def test_email_from_message(self) -> None:
         """Test creating email from message."""
         # Create a multipart email
         msg = MIMEMultipart()

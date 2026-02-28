@@ -1,6 +1,7 @@
 """Tests for MCP resources implementation."""
 
 import json
+from typing import Any, Optional
 from unittest import mock
 
 import pytest
@@ -12,7 +13,7 @@ from imap_mcp.resources import get_client_from_context, register_resources
 class TestResources:
     """Tests for imap_mcp.resources."""
 
-    def test_get_client_from_context(self):
+    def test_get_client_from_context(self) -> None:
         """Test getting IMAP client from context."""
         # Create mock context with client
         mock_client = mock.MagicMock()
@@ -29,7 +30,7 @@ class TestResources:
             get_client_from_context(mock_context)
 
     @pytest.fixture
-    def mock_imap_client(self):
+    def mock_imap_client(self) -> Any:
         """Create a mock IMAP client."""
         mock_client = mock.MagicMock()
 
@@ -66,22 +67,22 @@ class TestResources:
         return mock_client
 
     @pytest.fixture
-    def mock_context(self, mock_imap_client):
+    def mock_context(self, mock_imap_client: Any) -> Any:
         """Create a mock context with IMAP client."""
         mock_ctx = mock.MagicMock()
         mock_ctx.request_context.lifespan_context = {"imap_client": mock_imap_client}
         return mock_ctx
 
     @pytest.fixture
-    def mock_mcp(self, mock_context):
+    def mock_mcp(self, mock_context: Any) -> Any:
         """Create a mock MCP server."""
         mock_server = mock.MagicMock()
         # Store decorated functions for testing
         mock_server.resources = {}
 
         # Mock the resource decorator
-        def resource_decorator(path):
-            def decorator(func):
+        def resource_decorator(path: Any) -> Any:
+            def decorator(func: Any) -> Any:
                 mock_server.resources[path] = func
                 return func
             return decorator
@@ -92,7 +93,7 @@ class TestResources:
 
         return mock_server
 
-    def test_register_resources(self, mock_mcp, mock_imap_client):
+    def test_register_resources(self, mock_mcp: Any, mock_imap_client: Any) -> None:
         """Test registration of MCP resources."""
         # Call register_resources
         register_resources(mock_mcp, mock_imap_client)
@@ -104,7 +105,7 @@ class TestResources:
         assert "email://{folder}/{uid}" in mock_mcp.resources
 
     @pytest.mark.asyncio
-    async def test_get_folders(self, mock_mcp, mock_imap_client, mock_context):
+    async def test_get_folders(self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any) -> None:
         """Test get_folders resource."""
         # Register resources
         register_resources(mock_mcp, mock_imap_client)
@@ -123,7 +124,7 @@ class TestResources:
         mock_imap_client.list_folders.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_list_emails(self, mock_mcp, mock_imap_client, mock_context):
+    async def test_list_emails(self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any) -> None:
         """Test list_emails resource."""
         # Register resources
         register_resources(mock_mcp, mock_imap_client)
@@ -143,13 +144,13 @@ class TestResources:
         mock_imap_client.fetch_emails.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_search_emails(self, mock_mcp, mock_imap_client, mock_context):
+    async def test_search_emails(self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any) -> None:
         """Test search_emails resource."""
         # Register resources
         register_resources(mock_mcp, mock_imap_client)
 
         # Customize search to only return results from a single folder
-        def mock_search(query, folder=None):
+        def mock_search(query: Any, folder: Optional[str] = None) -> Any:
             # Only return results for INBOX folder
             if folder == "INBOX":
                 return [101, 102, 103]
@@ -178,7 +179,7 @@ class TestResources:
         assert mock_imap_client.fetch_emails.call_count >= 1
 
     @pytest.mark.asyncio
-    async def test_get_email(self, mock_mcp, mock_imap_client, mock_context):
+    async def test_get_email(self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any) -> None:
         """Test get_email resource."""
         # Register resources
         register_resources(mock_mcp, mock_imap_client)
@@ -213,7 +214,7 @@ class TestResources:
         mock_imap_client.fetch_email.assert_called_once_with(101, folder="INBOX")
 
     @pytest.mark.asyncio
-    async def test_error_handling(self, mock_mcp, mock_imap_client, mock_context):
+    async def test_error_handling(self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any) -> None:
         """Test error handling in resources."""
         # Register resources
         register_resources(mock_mcp, mock_imap_client)
@@ -233,7 +234,7 @@ class TestResources:
     # --- UID validation tests (issue #12) ---
 
     @pytest.mark.asyncio
-    async def test_get_email_invalid_uid_non_numeric(self, mock_mcp, mock_imap_client, mock_context):
+    async def test_get_email_invalid_uid_non_numeric(self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any) -> None:
         """Test get_email with non-numeric UID returns user-friendly error."""
         register_resources(mock_mcp, mock_imap_client)
 
@@ -245,7 +246,7 @@ class TestResources:
         mock_imap_client.fetch_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_get_email_invalid_uid_zero(self, mock_mcp, mock_imap_client, mock_context):
+    async def test_get_email_invalid_uid_zero(self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any) -> None:
         """Test get_email with UID=0 returns user-friendly error."""
         register_resources(mock_mcp, mock_imap_client)
 
@@ -257,7 +258,7 @@ class TestResources:
         mock_imap_client.fetch_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_get_email_invalid_uid_negative(self, mock_mcp, mock_imap_client, mock_context):
+    async def test_get_email_invalid_uid_negative(self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any) -> None:
         """Test get_email with negative UID returns user-friendly error."""
         register_resources(mock_mcp, mock_imap_client)
 
@@ -268,7 +269,7 @@ class TestResources:
         assert "positive integer" in result
         mock_imap_client.fetch_email.assert_not_called()
 
-    def test_resource_parameter_validation(self):
+    def test_resource_parameter_validation(self) -> None:
         """Test that resource parameter definitions are valid for MCP API.
 
         This ensures our resource paths are compatible with the router.
@@ -278,8 +279,8 @@ class TestResources:
         real_resources = {}
 
         # Mock FastMCP resource method to capture registrations
-        def resource_decorator(path):
-            def decorator(func):
+        def resource_decorator(path: Any) -> Any:
+            def decorator(func: Any) -> Any:
                 real_resources[path] = func
                 return func
             return decorator

@@ -153,7 +153,7 @@ class TestImapClientThreading(unittest.TestCase):
             b"FLAGS": (b"\\Seen",)
         }
 
-    def test_fetch_email_with_all_body_parts(self):
+    def test_fetch_email_with_all_body_parts(self) -> None:
         """Test that fetch_email retrieves all body parts correctly."""
         # Create mock email with both text and HTML parts
         uid = 123
@@ -184,7 +184,7 @@ class TestImapClientThreading(unittest.TestCase):
         assert email_obj.content.html == html_content
         assert email_obj.message_id == message_id
 
-    def test_fetch_email_with_attachments(self):
+    def test_fetch_email_with_attachments(self) -> None:
         """Test that fetch_email retrieves attachment metadata correctly."""
         # Create mock email with attachments
         uid = 123
@@ -248,7 +248,7 @@ class TestImapClientThreading(unittest.TestCase):
         assert jpg_attachment.content_type == "image/jpeg"
         assert jpg_attachment.size > 0
 
-    def test_fetch_thread_by_message_id(self):
+    def test_fetch_thread_by_message_id(self) -> None:
         """Test fetching all emails in a thread using Message-ID."""
         # Create a series of mock emails in a thread
         initial_uid = 100
@@ -376,7 +376,7 @@ class TestImapClientThreading(unittest.TestCase):
         assert thread_emails[2].in_reply_to == reply1_message_id
         assert initial_message_id in thread_emails[2].references
 
-    def test_fetch_thread_by_subject(self):
+    def test_fetch_thread_by_subject(self) -> None:
         """Test fetching thread by subject when proper headers are missing."""
         # Create thread without proper In-Reply-To/References headers
         initial_uid = 200
@@ -436,7 +436,7 @@ class TestImapClientThreading(unittest.TestCase):
         assert thread_emails[0].uid == initial_uid
         assert thread_emails[1].uid == reply_uid
 
-    def test_fetch_thread_with_many_messages(self):
+    def test_fetch_thread_with_many_messages(self) -> None:
         """Test performance when fetching threads with many messages."""
         initial_uid = 300
         message_ids = [f"<thread3-{i}@example.com>" for i in range(25)]
@@ -490,7 +490,7 @@ class TestImapClientThreading(unittest.TestCase):
         for i in range(25):
             assert thread_emails[i].uid == uids[i]
 
-    def test_fetch_thread_with_missing_message(self):
+    def test_fetch_thread_with_missing_message(self) -> None:
         """Test error handling if some messages in thread are inaccessible."""
         initial_uid = 400
         initial_message_id = "<thread4-initial@example.com>"
@@ -547,7 +547,7 @@ class TestImapClientThreading(unittest.TestCase):
         assert thread_emails[0].uid == initial_uid
         assert thread_emails[1].uid == reply2_uid
 
-    def test_thread_with_different_encodings(self):
+    def test_thread_with_different_encodings(self) -> None:
         """Test handling of different encodings within thread messages."""
         # Create emails with different encodings
         uid1 = 500

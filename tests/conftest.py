@@ -11,7 +11,7 @@ from email.header import Header
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -32,7 +32,7 @@ except ImportError:
 try:
     from dotenv import load_dotenv
 except ImportError:
-    def load_dotenv(x=None):
+    def load_dotenv(x: object = None) -> Any:
         return None
 
 from imap_mcp.models import Email, EmailAddress, EmailContent
@@ -41,7 +41,7 @@ from imap_mcp.models import Email, EmailAddress, EmailContent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def pytest_addoption(parser):
+def pytest_addoption(parser: pytest.Parser) -> None:
     """Add command-line options to pytest."""
     parser.addoption(
         "--skip-integration",
@@ -51,14 +51,14 @@ def pytest_addoption(parser):
     )
 
 
-def pytest_configure(config):
+def pytest_configure(config: pytest.Config) -> None:
     """Configure pytest with additional markers."""
     config.addinivalue_line(
         "markers", "integration: tests that require connection to real services"
     )
 
 
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(config: pytest.Config, items: List[pytest.Item]) -> None:
     """Skip integration tests if --skip-integration is provided."""
     if config.getoption("--skip-integration"):
         skip_integration = pytest.mark.skip(reason="Integration tests skipped with --skip-integration")
@@ -68,7 +68,7 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture
-def mock_imap_client():
+def mock_imap_client() -> Generator[MagicMock, None, None]:
     """Create a mock IMAPClient for testing."""
     with patch("imapclient.IMAPClient") as mock_client:
         client_instance = MagicMock()
@@ -88,7 +88,7 @@ def mock_imap_client():
 
 
 @pytest.fixture
-def test_email_message_simple():
+def test_email_message_simple() -> MIMEText:
     """Create a simple test email message."""
     msg = MIMEText("This is a simple test email.")
     msg["From"] = "Test Sender <sender@example.com>"
@@ -100,7 +100,7 @@ def test_email_message_simple():
 
 
 @pytest.fixture
-def test_email_message_multipart():
+def test_email_message_multipart() -> MIMEMultipart:
     """Create a multipart test email message with text and HTML parts."""
     msg = MIMEMultipart()
     msg["From"] = "Test Sender <sender@example.com>"
@@ -122,7 +122,7 @@ def test_email_message_multipart():
 
 
 @pytest.fixture
-def test_email_message_with_attachment():
+def test_email_message_with_attachment() -> MIMEMultipart:
     """Create a test email message with an attachment."""
     msg = MIMEMultipart()
     msg["From"] = "Test Sender <sender@example.com>"
@@ -144,7 +144,7 @@ def test_email_message_with_attachment():
 
 
 @pytest.fixture
-def test_email_message_encoded_headers():
+def test_email_message_encoded_headers() -> MIMEMultipart:
     """Create a test email message with encoded headers."""
     msg = MIMEMultipart()
     msg["From"] = str(Header("Jöhn Döe", "utf-8")) + " <john@example.com>"
@@ -161,7 +161,7 @@ def test_email_message_encoded_headers():
 
 
 @pytest.fixture
-def make_test_email_message():
+def make_test_email_message() -> Callable[..., MIMEMultipart]:
     """Factory fixture to create customized test email messages."""
     def _make_test_email_message(
         from_addr: str = "sender@example.com",
@@ -250,7 +250,7 @@ def make_test_email_message():
 
 
 @pytest.fixture
-def test_email_response_data():
+def test_email_response_data() -> Dict[bytes, Any]:
     """Create test IMAP email response data."""
     return {
         b"BODY[]": b"""From: Test Sender <sender@example.com>
@@ -268,7 +268,7 @@ This is a test email body.
 
 
 @pytest.fixture
-def make_test_email_response_data():
+def make_test_email_response_data() -> Callable[..., Dict[bytes, Any]]:
     """Factory fixture to create customized IMAP email response data."""
     def _make_response_data(
         uid: int = 12345,
@@ -302,7 +302,7 @@ def make_test_email_response_data():
 
 
 @pytest.fixture
-def test_email_model():
+def test_email_model() -> Email:
     """Create a test Email model instance."""
     return Email(
         message_id="<test-123@example.com>",
@@ -317,7 +317,7 @@ def test_email_model():
 
 
 @pytest.fixture
-def configure_test_env():
+def configure_test_env() -> Generator[None, None, None]:
     """Configure environment variables for testing."""
     # Save original environment
     original_env = os.environ.copy()

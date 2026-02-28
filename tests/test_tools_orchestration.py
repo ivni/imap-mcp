@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from email.message import EmailMessage
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,7 +18,7 @@ class TestMeetingInviteOrchestration:
     """Tests for the meeting invite orchestration functionality."""
 
     @pytest.fixture
-    def mock_context(self):
+    def mock_context(self) -> Any:
         """Create a mock MCP context with elicitation support."""
         ctx = MagicMock(spec=Context)
         # Default elicitation: user accepts and confirms
@@ -29,7 +30,7 @@ class TestMeetingInviteOrchestration:
         return ctx
 
     @pytest.fixture
-    def mock_imap_client(self):
+    def mock_imap_client(self) -> Any:
         """Create a mock IMAP client."""
         config = ImapConfig(
             host="imap.example.com",
@@ -48,7 +49,7 @@ class TestMeetingInviteOrchestration:
         return client
 
     @pytest.fixture
-    def mock_invite_email(self):
+    def mock_invite_email(self) -> Any:
         """Create a mock meeting invite email."""
         return Email(
             message_id="<invite123@example.com>",
@@ -63,7 +64,7 @@ class TestMeetingInviteOrchestration:
         )
 
     @pytest.fixture
-    def mock_non_invite_email(self):
+    def mock_non_invite_email(self) -> Any:
         """Create a mock non-invite email."""
         return Email(
             message_id="<message123@example.com>",
@@ -78,13 +79,13 @@ class TestMeetingInviteOrchestration:
         )
 
     @pytest.fixture
-    def registered_tools(self):
+    def registered_tools(self) -> Any:
         """Register tools and return captured tool functions."""
         mcp = MagicMock(spec=FastMCP)
         stored_tools = {}
 
-        def mock_tool_decorator(**kwargs):
-            def decorator(func):
+        def mock_tool_decorator(**kwargs: Any) -> Any:
+            def decorator(func: Any) -> Any:
                 stored_tools[func.__name__] = func
                 return func
             return decorator
@@ -102,16 +103,16 @@ class TestMeetingInviteOrchestration:
     @patch("imap_mcp.tools.get_client_from_context")
     async def test_process_meeting_invite_success(
         self,
-        mock_get_client,
-        mock_identify_invite,
-        mock_check_availability,
-        mock_generate_reply,
-        mock_create_reply_mime,
-        mock_context,
-        mock_imap_client,
-        mock_invite_email,
-        registered_tools,
-    ):
+        mock_get_client: Any,
+        mock_identify_invite: Any,
+        mock_check_availability: Any,
+        mock_generate_reply: Any,
+        mock_create_reply_mime: Any,
+        mock_context: Any,
+        mock_imap_client: Any,
+        mock_invite_email: Any,
+        registered_tools: Any,
+    ) -> None:
         """Test successful processing of a meeting invite."""
         mock_get_client.return_value = mock_imap_client
         mock_imap_client.fetch_email.return_value = mock_invite_email
@@ -170,13 +171,13 @@ class TestMeetingInviteOrchestration:
     @patch("imap_mcp.tools.get_client_from_context")
     async def test_process_non_invite_email(
         self,
-        mock_get_client,
-        mock_identify_invite,
-        mock_context,
-        mock_imap_client,
-        mock_non_invite_email,
-        registered_tools,
-    ):
+        mock_get_client: Any,
+        mock_identify_invite: Any,
+        mock_context: Any,
+        mock_imap_client: Any,
+        mock_non_invite_email: Any,
+        registered_tools: Any,
+    ) -> None:
         """Test processing a non-invite email."""
         mock_get_client.return_value = mock_imap_client
         mock_imap_client.fetch_email.return_value = mock_non_invite_email
@@ -203,11 +204,11 @@ class TestMeetingInviteOrchestration:
     @patch("imap_mcp.tools.get_client_from_context")
     async def test_process_meeting_invite_email_not_found(
         self,
-        mock_get_client,
-        mock_context,
-        mock_imap_client,
-        registered_tools,
-    ):
+        mock_get_client: Any,
+        mock_context: Any,
+        mock_imap_client: Any,
+        registered_tools: Any,
+    ) -> None:
         """Test handling when the email is not found."""
         mock_get_client.return_value = mock_imap_client
         mock_imap_client.fetch_email.return_value = None
@@ -232,16 +233,16 @@ class TestMeetingInviteOrchestration:
     @patch("imap_mcp.tools.get_client_from_context")
     async def test_process_meeting_invite_save_draft_failure(
         self,
-        mock_get_client,
-        mock_identify_invite,
-        mock_check_availability,
-        mock_generate_reply,
-        mock_create_reply_mime,
-        mock_context,
-        mock_imap_client,
-        mock_invite_email,
-        registered_tools,
-    ):
+        mock_get_client: Any,
+        mock_identify_invite: Any,
+        mock_check_availability: Any,
+        mock_generate_reply: Any,
+        mock_create_reply_mime: Any,
+        mock_context: Any,
+        mock_imap_client: Any,
+        mock_invite_email: Any,
+        registered_tools: Any,
+    ) -> None:
         """Test handling when saving the draft fails."""
         mock_get_client.return_value = mock_imap_client
         mock_imap_client.fetch_email.return_value = mock_invite_email

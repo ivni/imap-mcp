@@ -12,6 +12,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any, Optional
 
 import pytest
 
@@ -27,7 +28,7 @@ PROJECT_ROOT = Path.cwd()
 MCP_CLI_DIR = PROJECT_ROOT / "mcp-cli"
 SERVER_CONFIG_FILE = MCP_CLI_DIR / "server_config.json"
 
-def run_mcp_cli_command(cmd_args, input_text=None, timeout=60):
+def run_mcp_cli_command(cmd_args: Any, input_text: Optional[str] = None, timeout: int = 60) -> Any:
     """Run an mcp-cli command with the specified arguments and return the result."""
     # First, ensure we're in the mcp-cli directory and dependencies are installed
     os.chdir(MCP_CLI_DIR)
@@ -80,7 +81,7 @@ def run_mcp_cli_command(cmd_args, input_text=None, timeout=60):
 class TestImapMcpServerConfig:
     """Test the IMAP MCP server configuration and basic CLI functionality."""
 
-    def test_server_config_exists(self):
+    def test_server_config_exists(self) -> None:
         """Test that server_config.json exists and contains imap server entry."""
         assert SERVER_CONFIG_FILE.exists(), f"server_config.json not found at {SERVER_CONFIG_FILE}"
 
@@ -100,7 +101,7 @@ class TestImapMcpServerConfig:
         command_path = Path(imap_config["command"])
         assert command_path.exists(), f"Command does not exist: {command_path}"
 
-    def test_wrapper_script_exists(self):
+    def test_wrapper_script_exists(self) -> None:
         """Test that the IMAP MCP server wrapper script exists and is executable."""
         with open(SERVER_CONFIG_FILE, 'r') as f:
             config = json.load(f)
@@ -118,7 +119,7 @@ class TestImapMcpServerConfig:
         for indicator in expected_indicators:
             assert indicator in script_content, f"Expected content '{indicator}' not found in script"
 
-    def test_wrapper_script_help(self):
+    def test_wrapper_script_help(self) -> None:
         """Test that the wrapper script responds to --help."""
         with open(SERVER_CONFIG_FILE, 'r') as f:
             config = json.load(f)
@@ -141,7 +142,7 @@ class TestMcpCliImapIntegration:
     """Test the MCP CLI's ability to interact with the IMAP server."""
 
     @pytest.fixture(scope="class", autouse=True)
-    def setup_mcp_cli(self):
+    def setup_mcp_cli(self) -> None:
         """Ensure MCP CLI dependencies are installed."""
         # Save current directory
         original_dir = os.getcwd()
@@ -169,7 +170,7 @@ class TestMcpCliImapIntegration:
             # Return to original directory
             os.chdir(original_dir)
 
-    def test_mcp_cli_list_servers(self):
+    def test_mcp_cli_list_servers(self) -> None:
         """Test that MCP CLI can list servers and includes the IMAP server."""
         process, log_path = run_mcp_cli_command(["servers"])
 
@@ -179,7 +180,7 @@ class TestMcpCliImapIntegration:
         # Check that the output includes our IMAP server
         assert "imap" in process.stdout, "IMAP server not listed in servers command output"
 
-    def test_tool_list_with_imap_server(self):
+    def test_tool_list_with_imap_server(self) -> None:
         """Test getting tool list from the IMAP server through mcp-cli."""
         # Non-interactive command to list available tools for the IMAP server
         process, log_path = run_mcp_cli_command(["tools", "--server", "imap"])
@@ -215,7 +216,7 @@ class TestMcpCliImapIntegration:
                 assert tool.lower() in stdout, f"Expected tool '{tool}' not found in tools list"
 
 @pytest.mark.skip("Skipping direct tool calls until they can be properly configured for CI")
-def test_direct_email_search_command():
+def test_direct_email_search_command() -> None:
     """Test searching for unread emails using a direct CLI command."""
     # Use the CLI in command mode to execute a tool directly
     search_args = [

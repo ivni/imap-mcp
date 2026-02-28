@@ -1,6 +1,7 @@
 """Tests for the IMAP client."""
 
-from unittest.mock import patch
+from typing import Any, Callable, Dict
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,7 +13,7 @@ from imap_mcp.models import Email
 class TestImapClient:
     """Test the IMAP client."""
 
-    def test_init(self):
+    def test_init(self) -> None:
         """Test initializing the client."""
         config = ImapConfig(
             host="imap.example.com",
@@ -34,7 +35,7 @@ class TestImapClient:
         client = ImapClient(config, allowed_folders=allowed_folders)
         assert client.allowed_folders == set(allowed_folders)
 
-    def test_init_empty_list_becomes_empty_set(self):
+    def test_init_empty_list_becomes_empty_set(self) -> None:
         """Test that allowed_folders=[] becomes set(), not None."""
         config = ImapConfig(
             host="imap.example.com",
@@ -47,7 +48,7 @@ class TestImapClient:
         assert client.allowed_folders == set()
         assert client.allowed_folders is not None
 
-    def test_is_folder_allowed_with_empty_set(self):
+    def test_is_folder_allowed_with_empty_set(self) -> None:
         """Test that empty allowed_folders set rejects all folders."""
         config = ImapConfig(
             host="imap.example.com",
@@ -60,7 +61,7 @@ class TestImapClient:
         assert client._is_folder_allowed("INBOX") is False
         assert client._is_folder_allowed("Sent") is False
 
-    def test_connect_success(self, mock_imap_client):
+    def test_connect_success(self, mock_imap_client: MagicMock) -> None:
         """Test successful connection with explicit SSL context."""
         config = ImapConfig(
             host="imap.example.com",
@@ -97,7 +98,7 @@ class TestImapClient:
                 assert client.connected is True
                 assert client.client is mock_imap_client
 
-    def test_connect_with_custom_ca_bundle(self, mock_imap_client):
+    def test_connect_with_custom_ca_bundle(self, mock_imap_client: MagicMock) -> None:
         """Test connection with custom CA bundle."""
         config = ImapConfig(
             host="imap.example.com",
@@ -123,7 +124,7 @@ class TestImapClient:
                     ssl_context=mock_ctx,
                 )
 
-    def test_connect_no_ssl_no_context(self, mock_imap_client):
+    def test_connect_no_ssl_no_context(self, mock_imap_client: MagicMock) -> None:
         """Test that ssl_context is None when use_ssl is False."""
         config = ImapConfig(
             host="imap.example.com",
@@ -145,7 +146,7 @@ class TestImapClient:
                 ssl_context=None,
             )
 
-    def test_connect_failure(self):
+    def test_connect_failure(self) -> None:
         """Test connection failure."""
         config = ImapConfig(
             host="imap.example.com",
@@ -170,7 +171,7 @@ class TestImapClient:
             assert client.connected is False
             assert client.client is None
 
-    def test_disconnect(self, mock_imap_client):
+    def test_disconnect(self, mock_imap_client: MagicMock) -> None:
         """Test disconnection."""
         config = ImapConfig(
             host="imap.example.com",
@@ -196,7 +197,7 @@ class TestImapClient:
             assert client.connected is False
             assert client.client is None
 
-    def test_disconnect_with_exception(self, mock_imap_client):
+    def test_disconnect_with_exception(self, mock_imap_client: MagicMock) -> None:
         """Test disconnection with exception."""
         config = ImapConfig(
             host="imap.example.com",
@@ -225,7 +226,7 @@ class TestImapClient:
             assert client.connected is False
             assert client.client is None
 
-    def test_ensure_connected_when_not_connected(self, mock_imap_client):
+    def test_ensure_connected_when_not_connected(self, mock_imap_client: MagicMock) -> None:
         """Test ensuring connection when not connected."""
         config = ImapConfig(
             host="imap.example.com",
@@ -252,7 +253,7 @@ class TestImapClient:
             # Verify client is now connected
             assert client.connected is True
 
-    def test_ensure_connected_when_already_connected(self, mock_imap_client):
+    def test_ensure_connected_when_already_connected(self, mock_imap_client: MagicMock) -> None:
         """Test ensuring connection when already connected."""
         config = ImapConfig(
             host="imap.example.com",
@@ -281,7 +282,7 @@ class TestImapClient:
             # Verify client is still connected
             assert client.connected is True
 
-    def test_list_folders_from_cache(self, mock_imap_client):
+    def test_list_folders_from_cache(self, mock_imap_client: MagicMock) -> None:
         """Test listing folders from cache."""
         config = ImapConfig(
             host="imap.example.com",
@@ -315,7 +316,7 @@ class TestImapClient:
             # Verify correct folders were returned
             assert set(folders) == {"INBOX", "Sent", "Trash"}
 
-    def test_list_folders_refresh(self, mock_imap_client):
+    def test_list_folders_refresh(self, mock_imap_client: MagicMock) -> None:
         """Test listing folders with refresh."""
         config = ImapConfig(
             host="imap.example.com",
@@ -360,7 +361,7 @@ class TestImapClient:
             # Verify cache was updated
             assert set(client.folder_cache.keys()) == {"INBOX", "Sent", "Drafts"}
 
-    def test_list_folders_with_allowed_folders(self, mock_imap_client):
+    def test_list_folders_with_allowed_folders(self, mock_imap_client: MagicMock) -> None:
         """Test listing folders with allowed folders filter."""
         config = ImapConfig(
             host="imap.example.com",
@@ -398,7 +399,7 @@ class TestImapClient:
             # Verify only allowed folders were cached
             assert set(client.folder_cache.keys()) == {"INBOX", "Sent"}
 
-    def test_select_folder(self, mock_imap_client):
+    def test_select_folder(self, mock_imap_client: MagicMock) -> None:
         """Test selecting a folder."""
         config = ImapConfig(
             host="imap.example.com",
@@ -436,7 +437,7 @@ class TestImapClient:
             # Verify select_folder was called with readonly=True
             mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=True)
 
-    def test_select_folder_not_allowed(self, mock_imap_client):
+    def test_select_folder_not_allowed(self, mock_imap_client: MagicMock) -> None:
         """Test selecting a folder that's not allowed."""
         config = ImapConfig(
             host="imap.example.com",
@@ -464,7 +465,7 @@ class TestImapClient:
             # Verify select_folder was not called
             mock_imap_client.select_folder.assert_not_called()
 
-    def test_search_with_string_criteria(self, mock_imap_client):
+    def test_search_with_string_criteria(self, mock_imap_client: MagicMock) -> None:
         """Test searching with string criteria."""
         config = ImapConfig(
             host="imap.example.com",
@@ -514,7 +515,7 @@ class TestImapClient:
             # Since we can't predict the exact type, we'll just check it's a date-like object
             assert hasattr(args[1], 'year') and hasattr(args[1], 'month') and hasattr(args[1], 'day')
 
-    def test_search_with_complex_criteria(self, mock_imap_client):
+    def test_search_with_complex_criteria(self, mock_imap_client: MagicMock) -> None:
         """Test searching with complex criteria."""
         config = ImapConfig(
             host="imap.example.com",
@@ -548,7 +549,7 @@ class TestImapClient:
             # Verify result is correct
             assert result == [4, 5, 6]
 
-    def test_fetch_email(self, mock_imap_client, test_email_response_data):
+    def test_fetch_email(self, mock_imap_client: MagicMock, test_email_response_data: Dict[bytes, Any]) -> None:
         """Test fetching a single email."""
         config = ImapConfig(
             host="imap.example.com",
@@ -586,7 +587,7 @@ class TestImapClient:
             assert "Test Sender" in email_obj.from_.name
             assert "sender@example.com" in email_obj.from_.address
 
-    def test_fetch_email_not_found(self, mock_imap_client):
+    def test_fetch_email_not_found(self, mock_imap_client: MagicMock) -> None:
         """Test fetching an email that doesn't exist."""
         config = ImapConfig(
             host="imap.example.com",
@@ -619,7 +620,7 @@ class TestImapClient:
             # Verify result is None
             assert email_obj is None
 
-    def test_fetch_emails(self, mock_imap_client, make_test_email_response_data):
+    def test_fetch_emails(self, mock_imap_client: MagicMock, make_test_email_response_data: Callable[..., Dict[bytes, Any]]) -> None:
         """Test fetching multiple emails."""
         config = ImapConfig(
             host="imap.example.com",
@@ -676,7 +677,7 @@ class TestImapClient:
             assert emails[102].subject == "Email 2"
             assert emails[103].subject == "Email 3"
 
-    def test_fetch_emails_with_limit(self, mock_imap_client, make_test_email_response_data):
+    def test_fetch_emails_with_limit(self, mock_imap_client: MagicMock, make_test_email_response_data: Callable[..., Dict[bytes, Any]]) -> None:
         """Test fetching emails with a limit."""
         config = ImapConfig(
             host="imap.example.com",
@@ -723,7 +724,7 @@ class TestImapClient:
             assert 101 in emails
             assert 102 in emails
 
-    def test_mark_email(self, mock_imap_client):
+    def test_mark_email(self, mock_imap_client: MagicMock) -> None:
         """Test marking an email with a flag."""
         config = ImapConfig(
             host="imap.example.com",
@@ -771,7 +772,7 @@ class TestImapClient:
             # Verify result is success
             assert result is True
 
-    def test_mark_email_failure(self, mock_imap_client):
+    def test_mark_email_failure(self, mock_imap_client: MagicMock) -> None:
         """Test marking an email with a flag when operation fails."""
         config = ImapConfig(
             host="imap.example.com",
@@ -804,7 +805,7 @@ class TestImapClient:
             # Verify result is failure
             assert result is False
 
-    def test_move_email(self, mock_imap_client):
+    def test_move_email(self, mock_imap_client: MagicMock) -> None:
         """Test moving an email to another folder."""
         config = ImapConfig(
             host="imap.example.com",
@@ -842,7 +843,7 @@ class TestImapClient:
             # Verify result is success
             assert result is True
 
-    def test_move_email_with_allowed_folders(self, mock_imap_client):
+    def test_move_email_with_allowed_folders(self, mock_imap_client: MagicMock) -> None:
         """Test moving an email with allowed folders restriction."""
         config = ImapConfig(
             host="imap.example.com",
@@ -890,7 +891,7 @@ class TestImapClient:
 
     # --- Folder name sanitization tests (issue #3) ---
 
-    def test_validate_folder_name_valid(self):
+    def test_validate_folder_name_valid(self) -> None:
         """Test that valid folder names pass validation."""
         config = ImapConfig(
             host="imap.example.com",
@@ -909,7 +910,7 @@ class TestImapClient:
         client._validate_folder_name("INBOX.Drafts")
         client._validate_folder_name("Brouillons")
 
-    def test_validate_folder_name_rejects_double_quote(self):
+    def test_validate_folder_name_rejects_double_quote(self) -> None:
         """Test that folder names with double quotes are rejected."""
         config = ImapConfig(
             host="imap.example.com",
@@ -923,7 +924,7 @@ class TestImapClient:
         with pytest.raises(ValueError, match="invalid characters"):
             client._validate_folder_name('INBOX" LOGOUT')
 
-    def test_validate_folder_name_rejects_backslash(self):
+    def test_validate_folder_name_rejects_backslash(self) -> None:
         """Test that folder names with backslashes are rejected."""
         config = ImapConfig(
             host="imap.example.com",
@@ -937,7 +938,7 @@ class TestImapClient:
         with pytest.raises(ValueError, match="invalid characters"):
             client._validate_folder_name("INBOX\\Subfolder")
 
-    def test_validate_folder_name_rejects_curly_braces(self):
+    def test_validate_folder_name_rejects_curly_braces(self) -> None:
         """Test that folder names with curly braces are rejected."""
         config = ImapConfig(
             host="imap.example.com",
@@ -951,7 +952,7 @@ class TestImapClient:
         with pytest.raises(ValueError, match="invalid characters"):
             client._validate_folder_name("INBOX{5}")
 
-    def test_validate_folder_name_rejects_newlines(self):
+    def test_validate_folder_name_rejects_newlines(self) -> None:
         """Test that folder names with CR/LF are rejected."""
         config = ImapConfig(
             host="imap.example.com",
@@ -967,7 +968,7 @@ class TestImapClient:
         with pytest.raises(ValueError, match="invalid characters"):
             client._validate_folder_name("INBOX\nLOGOUT")
 
-    def test_validate_folder_name_rejects_nul(self):
+    def test_validate_folder_name_rejects_nul(self) -> None:
         """Test that folder names with NUL bytes are rejected."""
         config = ImapConfig(
             host="imap.example.com",
@@ -981,7 +982,7 @@ class TestImapClient:
         with pytest.raises(ValueError, match="invalid characters"):
             client._validate_folder_name("INBOX\x00")
 
-    def test_validate_folder_name_rejects_empty(self):
+    def test_validate_folder_name_rejects_empty(self) -> None:
         """Test that empty folder names are rejected."""
         config = ImapConfig(
             host="imap.example.com",
@@ -997,7 +998,7 @@ class TestImapClient:
         with pytest.raises(ValueError, match="must not be empty"):
             client._validate_folder_name("   ")
 
-    def test_validate_folder_name_rejects_too_long(self):
+    def test_validate_folder_name_rejects_too_long(self) -> None:
         """Test that excessively long folder names are rejected."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1011,7 +1012,7 @@ class TestImapClient:
         with pytest.raises(ValueError, match="maximum length"):
             client._validate_folder_name("A" * 256)
 
-    def test_select_folder_rejects_injection_characters(self, mock_imap_client):
+    def test_select_folder_rejects_injection_characters(self, mock_imap_client: MagicMock) -> None:
         """Test that select_folder rejects folder names with injection characters."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1032,7 +1033,7 @@ class TestImapClient:
             # imapclient.select_folder must never be called
             mock_imap_client.select_folder.assert_not_called()
 
-    def test_move_email_rejects_injection_in_target_folder(self, mock_imap_client):
+    def test_move_email_rejects_injection_in_target_folder(self, mock_imap_client: MagicMock) -> None:
         """Test that move_email rejects injection characters in target folder.
 
         Critical: target_folder bypasses select_folder() and goes
@@ -1057,7 +1058,7 @@ class TestImapClient:
             mock_imap_client.select_folder.assert_not_called()
             mock_imap_client.copy.assert_not_called()
 
-    def test_move_email_rejects_injection_in_source_folder(self, mock_imap_client):
+    def test_move_email_rejects_injection_in_source_folder(self, mock_imap_client: MagicMock) -> None:
         """Test that move_email rejects injection characters in source folder."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1078,7 +1079,7 @@ class TestImapClient:
             mock_imap_client.select_folder.assert_not_called()
             mock_imap_client.copy.assert_not_called()
 
-    def test_validation_before_allowed_folders_check(self, mock_imap_client):
+    def test_validation_before_allowed_folders_check(self, mock_imap_client: MagicMock) -> None:
         """Test that character validation runs before the allowed_folders check.
 
         Injection characters should be rejected first, even if the folder
@@ -1102,7 +1103,7 @@ class TestImapClient:
             with pytest.raises(ValueError, match="invalid characters"):
                 client.select_folder('Trash"\r\n')
 
-    def test_move_email_failure(self, mock_imap_client):
+    def test_move_email_failure(self, mock_imap_client: MagicMock) -> None:
         """Test moving an email when operation fails."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1135,7 +1136,7 @@ class TestImapClient:
             # Verify result is failure
             assert result is False
 
-    def test_delete_email(self, mock_imap_client):
+    def test_delete_email(self, mock_imap_client: MagicMock) -> None:
         """Test deleting an email."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1170,7 +1171,7 @@ class TestImapClient:
             # Verify result is success
             assert result is True
 
-    def test_delete_email_failure(self, mock_imap_client):
+    def test_delete_email_failure(self, mock_imap_client: Any) -> None:
         """Test deleting an email when operation fails."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1205,7 +1206,7 @@ class TestImapClient:
 
     # --- UID validation tests (issue #12) ---
 
-    def test_validate_uid_valid(self):
+    def test_validate_uid_valid(self) -> None:
         """Test that valid UIDs pass validation."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1222,7 +1223,7 @@ class TestImapClient:
         client._validate_uid(12345)
         client._validate_uid(0xFFFFFFFF)  # max 32-bit
 
-    def test_validate_uid_rejects_zero(self):
+    def test_validate_uid_rejects_zero(self) -> None:
         """Test that UID=0 is rejected."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1236,7 +1237,7 @@ class TestImapClient:
         with pytest.raises(ValueError, match="positive integer"):
             client._validate_uid(0)
 
-    def test_validate_uid_rejects_negative(self):
+    def test_validate_uid_rejects_negative(self) -> None:
         """Test that negative UIDs are rejected."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1253,7 +1254,7 @@ class TestImapClient:
         with pytest.raises(ValueError, match="positive integer"):
             client._validate_uid(-999)
 
-    def test_validate_uid_rejects_overflow(self):
+    def test_validate_uid_rejects_overflow(self) -> None:
         """Test that UIDs exceeding 32-bit range are rejected."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1267,7 +1268,7 @@ class TestImapClient:
         with pytest.raises(ValueError, match="maximum"):
             client._validate_uid(0xFFFFFFFF + 1)
 
-    def test_fetch_email_rejects_invalid_uid(self):
+    def test_fetch_email_rejects_invalid_uid(self) -> None:
         """Test that fetch_email rejects invalid UIDs before connecting."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1284,7 +1285,7 @@ class TestImapClient:
         with pytest.raises(ValueError, match="positive integer"):
             client.fetch_email(-1, "INBOX")
 
-    def test_fetch_emails_rejects_invalid_uid_in_list(self):
+    def test_fetch_emails_rejects_invalid_uid_in_list(self) -> None:
         """Test that fetch_emails rejects lists containing invalid UIDs."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1301,7 +1302,7 @@ class TestImapClient:
         with pytest.raises(ValueError, match="positive integer"):
             client.fetch_emails([-5], "INBOX")
 
-    def test_mark_email_rejects_invalid_uid(self):
+    def test_mark_email_rejects_invalid_uid(self) -> None:
         """Test that mark_email rejects invalid UIDs."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1315,7 +1316,7 @@ class TestImapClient:
         with pytest.raises(ValueError, match="positive integer"):
             client.mark_email(0, "INBOX", "\\Seen")
 
-    def test_move_email_rejects_invalid_uid(self):
+    def test_move_email_rejects_invalid_uid(self) -> None:
         """Test that move_email rejects invalid UIDs."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1329,7 +1330,7 @@ class TestImapClient:
         with pytest.raises(ValueError, match="positive integer"):
             client.move_email(-1, "INBOX", "Archive")
 
-    def test_delete_email_rejects_invalid_uid(self):
+    def test_delete_email_rejects_invalid_uid(self) -> None:
         """Test that delete_email rejects invalid UIDs."""
         config = ImapConfig(
             host="imap.example.com",

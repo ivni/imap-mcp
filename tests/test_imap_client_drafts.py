@@ -1,6 +1,7 @@
 """Tests for IMAP client draft saving functionality."""
 
 from email.message import EmailMessage
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,7 +14,7 @@ class TestDraftsFunctionality:
     """Tests for drafts folder functionality."""
 
     @pytest.fixture
-    def mock_imap_client(self):
+    def mock_imap_client(self) -> Any:
         """Create a mock IMAP client with the necessary methods."""
         config = ImapConfig(
             host="imap.example.com",
@@ -34,7 +35,7 @@ class TestDraftsFunctionality:
         return client
 
     @pytest.fixture
-    def sample_mime_message(self):
+    def sample_mime_message(self) -> Any:
         """Create a sample MIME message for testing."""
         message = EmailMessage()
         message["From"] = "sender@example.com"
@@ -44,7 +45,7 @@ class TestDraftsFunctionality:
 
         return message
 
-    def test_get_drafts_folder_standard(self, mock_imap_client):
+    def test_get_drafts_folder_standard(self, mock_imap_client: Any) -> None:
         """Test getting the drafts folder for standard IMAP server."""
         # Mock list_folders to return standard folders
         mock_imap_client.list_folders.return_value = ["INBOX", "Sent", "Drafts", "Trash"]
@@ -58,7 +59,7 @@ class TestDraftsFunctionality:
         drafts_folder = mock_imap_client._get_drafts_folder()
         assert drafts_folder == "drafts"
 
-    def test_get_drafts_folder_gmail(self, mock_imap_client):
+    def test_get_drafts_folder_gmail(self, mock_imap_client: Any) -> None:
         """Test getting the drafts folder for Gmail."""
         # Configure as Gmail
         mock_imap_client.config.host = "imap.gmail.com"
@@ -72,7 +73,7 @@ class TestDraftsFunctionality:
         drafts_folder = mock_imap_client._get_drafts_folder()
         assert drafts_folder == "[Gmail]/Drafts"
 
-    def test_get_drafts_folder_fallback(self, mock_imap_client):
+    def test_get_drafts_folder_fallback(self, mock_imap_client: Any) -> None:
         """Test fallback behavior when no drafts folder is found."""
         # Mock list_folders to return folders without a drafts folder
         mock_imap_client.list_folders.return_value = ["INBOX", "Sent", "Trash"]
@@ -82,7 +83,7 @@ class TestDraftsFunctionality:
         assert drafts_folder == "INBOX"
 
     @patch("imap_mcp.imap_client.logger")
-    def test_save_draft_mime_success(self, mock_logger, mock_imap_client, sample_mime_message):
+    def test_save_draft_mime_success(self, mock_logger: Any, mock_imap_client: Any, sample_mime_message: Any) -> None:
         """Test saving a draft MIME message successfully."""
         # Mock behavior
         mock_imap_client._get_drafts_folder = MagicMock(return_value="Drafts")
@@ -97,7 +98,7 @@ class TestDraftsFunctionality:
         mock_logger.debug.assert_called_with("Draft saved with UID: 5678")
 
     @patch("imap_mcp.imap_client.logger")
-    def test_save_draft_mime_no_appenduid(self, mock_logger, mock_imap_client, sample_mime_message):
+    def test_save_draft_mime_no_appenduid(self, mock_logger: Any, mock_imap_client: Any, sample_mime_message: Any) -> None:
         """Test saving a draft without APPENDUID in response."""
         # Mock behavior
         mock_imap_client._get_drafts_folder = MagicMock(return_value="Drafts")
@@ -112,7 +113,7 @@ class TestDraftsFunctionality:
         mock_logger.warning.assert_called_with("Could not extract UID from append response: b'OK'")
 
     @patch("imap_mcp.imap_client.logger")
-    def test_save_draft_mime_error(self, mock_logger, mock_imap_client, sample_mime_message):
+    def test_save_draft_mime_error(self, mock_logger: Any, mock_imap_client: Any, sample_mime_message: Any) -> None:
         """Test error handling when saving a draft fails."""
         # Mock behavior
         mock_imap_client._get_drafts_folder = MagicMock(return_value="Drafts")

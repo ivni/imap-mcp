@@ -1,6 +1,7 @@
 """Tests for meeting reply generation functionality."""
 
 from datetime import datetime
+from typing import Any
 
 import pytest
 
@@ -16,7 +17,7 @@ class TestMeetingReply:
     """Tests for meeting reply functions."""
 
     @pytest.fixture
-    def sample_invite_details(self):
+    def sample_invite_details(self) -> Any:
         """Create sample invite details for testing."""
         return {
             "subject": "Project Planning Meeting",
@@ -28,7 +29,7 @@ class TestMeetingReply:
         }
 
     @pytest.fixture
-    def sample_availability_accept(self):
+    def sample_availability_accept(self) -> Any:
         """Create sample availability status for accepting."""
         return {
             "available": True,
@@ -37,7 +38,7 @@ class TestMeetingReply:
         }
 
     @pytest.fixture
-    def sample_availability_decline(self):
+    def sample_availability_decline(self) -> Any:
         """Create sample availability status for declining."""
         return {
             "available": False,
@@ -45,7 +46,7 @@ class TestMeetingReply:
             "alternative_times": []
         }
 
-    def test_format_meeting_time_same_day(self):
+    def test_format_meeting_time_same_day(self) -> None:
         """Test formatting meeting time for same day."""
         start_time = datetime(2025, 4, 1, 10, 0, 0)
         end_time = datetime(2025, 4, 1, 11, 0, 0)
@@ -55,7 +56,7 @@ class TestMeetingReply:
         assert "Tuesday, April 01, 2025" in result
         assert "from 10:00 AM to 11:00 AM" in result
 
-    def test_format_meeting_time_different_days(self):
+    def test_format_meeting_time_different_days(self) -> None:
         """Test formatting meeting time for different days."""
         start_time = datetime(2025, 4, 1, 10, 0, 0)
         end_time = datetime(2025, 4, 2, 11, 0, 0)
@@ -65,7 +66,7 @@ class TestMeetingReply:
         assert "Tuesday, April 01, 2025" in result
         assert "Wednesday, April 02, 2025" in result
 
-    def test_format_meeting_time_missing_end(self):
+    def test_format_meeting_time_missing_end(self) -> None:
         """Test formatting meeting time with missing end time."""
         start_time = datetime(2025, 4, 1, 10, 0, 0)
 
@@ -73,13 +74,13 @@ class TestMeetingReply:
 
         assert "Tuesday, April 01, 2025 at 10:00 AM" == result
 
-    def test_format_meeting_time_missing_both(self):
+    def test_format_meeting_time_missing_both(self) -> None:
         """Test formatting meeting time with both times missing."""
         result = _format_meeting_time(None, None)
 
         assert result == "scheduled time"
 
-    def test_generate_accept_reply(self):
+    def test_generate_accept_reply(self) -> None:
         """Test generating an acceptance reply."""
         subject = "Project Meeting"
         formatted_time = "Tuesday, April 01, 2025 from 10:00 AM to 11:00 AM"
@@ -98,7 +99,7 @@ class TestMeetingReply:
         assert formatted_time in result["reply_body"]
         assert location in result["reply_body"]
 
-    def test_generate_decline_reply(self):
+    def test_generate_decline_reply(self) -> None:
         """Test generating a decline reply."""
         subject = "Project Meeting"
         formatted_time = "Tuesday, April 01, 2025 from 10:00 AM to 11:00 AM"
@@ -118,7 +119,7 @@ class TestMeetingReply:
         assert formatted_time in result["reply_body"]
         assert reason in result["reply_body"]
 
-    def test_generate_meeting_reply_content_accept(self, sample_invite_details, sample_availability_accept):
+    def test_generate_meeting_reply_content_accept(self, sample_invite_details: Any, sample_availability_accept: Any) -> None:
         """Test generating meeting reply content for an accepted meeting."""
         result = generate_meeting_reply_content(sample_invite_details, sample_availability_accept)
 
@@ -132,7 +133,7 @@ class TestMeetingReply:
         assert "I'll attend" in result["reply_body"]
         assert sample_invite_details["location"] in result["reply_body"]
 
-    def test_generate_meeting_reply_content_decline(self, sample_invite_details, sample_availability_decline):
+    def test_generate_meeting_reply_content_decline(self, sample_invite_details: Any, sample_availability_decline: Any) -> None:
         """Test generating meeting reply content for a declined meeting."""
         result = generate_meeting_reply_content(sample_invite_details, sample_availability_decline)
 
@@ -146,7 +147,7 @@ class TestMeetingReply:
         assert "I'm unable to attend" in result["reply_body"]
         assert sample_availability_decline["reason"] in result["reply_body"]
 
-    def test_generate_meeting_reply_content_invalid_input(self):
+    def test_generate_meeting_reply_content_invalid_input(self) -> None:
         """Test generating meeting reply content with invalid input."""
         # Test with non-dict invite details
         result1 = generate_meeting_reply_content("not a dict", {"available": True})
@@ -158,7 +159,7 @@ class TestMeetingReply:
         assert result2["reply_type"] == "error"
         assert "Error:" in result2["reply_subject"]
 
-    def test_generate_meeting_reply_content_missing_fields(self):
+    def test_generate_meeting_reply_content_missing_fields(self) -> None:
         """Test generating meeting reply content with missing fields."""
         # Minimal invite details
         minimal_invite = {"subject": "Minimal Meeting"}

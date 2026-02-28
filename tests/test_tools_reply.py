@@ -1,6 +1,7 @@
 """Tests for reply-related MCP tools."""
 
 from datetime import datetime
+from typing import Any, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,7 +15,7 @@ class TestToolsReply:
     """Test class for reply-related MCP tools."""
 
     @pytest.fixture
-    def mock_email(self):
+    def mock_email(self) -> Email:
         """Create a mock email object for testing."""
         return Email(
             message_id="<test123@example.com>",
@@ -32,13 +33,13 @@ class TestToolsReply:
         )
 
     @pytest.fixture
-    def registered_tools(self):
+    def registered_tools(self) -> tuple[dict[str, Any], MagicMock]:
         """Register tools and return captured tool functions with mock client."""
         mcp = MagicMock(spec=FastMCP)
-        stored_tools = {}
+        stored_tools: dict[str, Any] = {}
 
-        def mock_tool_decorator(**kwargs):
-            def decorator(func):
+        def mock_tool_decorator(**kwargs: Any) -> Callable[..., Any]:
+            def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
                 stored_tools[func.__name__] = func
                 return func
             return decorator
@@ -49,7 +50,7 @@ class TestToolsReply:
         return stored_tools, imap_client
 
     @pytest.fixture
-    def mock_context(self):
+    def mock_context(self) -> MagicMock:
         """Create a mock context with elicitation support.
 
         Default: user confirms all actions (accept + confirmed=True).
@@ -69,8 +70,8 @@ class TestToolsReply:
     @patch("imap_mcp.smtp_client.create_reply_mime")
     @patch("imap_mcp.tools.get_client_from_context")
     async def test_draft_reply_tool_success(
-        self, mock_get_client, mock_create_reply, registered_tools, mock_email, mock_context
-    ):
+        self, mock_get_client: MagicMock, mock_create_reply: MagicMock, registered_tools: tuple[dict[str, Any], MagicMock], mock_email: Email, mock_context: MagicMock
+    ) -> None:
         """Test successful creation of a draft reply."""
         tools_dict, imap_client = registered_tools
         draft_reply_tool = tools_dict["draft_reply_tool"]
@@ -101,8 +102,8 @@ class TestToolsReply:
     @patch("imap_mcp.smtp_client.create_reply_mime")
     @patch("imap_mcp.tools.get_client_from_context")
     async def test_draft_reply_tool_with_options(
-        self, mock_get_client, mock_create_reply, registered_tools, mock_email, mock_context
-    ):
+        self, mock_get_client: MagicMock, mock_create_reply: MagicMock, registered_tools: tuple[dict[str, Any], MagicMock], mock_email: Email, mock_context: MagicMock
+    ) -> None:
         """Test draft reply with reply_all and cc options."""
         tools_dict, imap_client = registered_tools
         draft_reply_tool = tools_dict["draft_reply_tool"]
@@ -135,8 +136,8 @@ class TestToolsReply:
     @pytest.mark.asyncio
     @patch("imap_mcp.tools.get_client_from_context")
     async def test_draft_reply_tool_fetch_fail(
-        self, mock_get_client, registered_tools, mock_context
-    ):
+        self, mock_get_client: MagicMock, registered_tools: tuple[dict[str, Any], MagicMock], mock_context: MagicMock
+    ) -> None:
         """Test handling when email fetch fails."""
         tools_dict, imap_client = registered_tools
         draft_reply_tool = tools_dict["draft_reply_tool"]
@@ -159,8 +160,8 @@ class TestToolsReply:
     @patch("imap_mcp.smtp_client.create_reply_mime")
     @patch("imap_mcp.tools.get_client_from_context")
     async def test_draft_reply_tool_save_fail(
-        self, mock_get_client, mock_create_reply, registered_tools, mock_email, mock_context
-    ):
+        self, mock_get_client: MagicMock, mock_create_reply: MagicMock, registered_tools: tuple[dict[str, Any], MagicMock], mock_email: Email, mock_context: MagicMock
+    ) -> None:
         """Test handling when draft saving fails."""
         tools_dict, imap_client = registered_tools
         draft_reply_tool = tools_dict["draft_reply_tool"]
@@ -186,8 +187,8 @@ class TestToolsReply:
 
     @pytest.mark.asyncio
     async def test_draft_reply_tool_confirmation_declined(
-        self, registered_tools, mock_context
-    ):
+        self, registered_tools: tuple[dict[str, Any], MagicMock], mock_context: MagicMock
+    ) -> None:
         """Test that declining confirmation prevents draft creation."""
         tools_dict, imap_client = registered_tools
         draft_reply_tool = tools_dict["draft_reply_tool"]

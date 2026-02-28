@@ -1,6 +1,7 @@
 """Tests for the mock calendar availability checking functionality."""
 
 from datetime import datetime, timedelta
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -17,27 +18,27 @@ class TestCalendarMock:
     """Tests for calendar mock functions."""
 
     @pytest.fixture
-    def sample_datetime(self):
+    def sample_datetime(self) -> Any:
         """Create a sample datetime for testing."""
         return datetime(2025, 4, 1, 10, 0, 0)  # April 1, 2025 10:00 AM
 
-    def test_parse_datetime_object(self, sample_datetime):
+    def test_parse_datetime_object(self, sample_datetime: Any) -> None:
         """Test parsing when input is already a datetime object."""
         result = _parse_datetime(sample_datetime)
         assert result == sample_datetime
 
-    def test_parse_datetime_string(self):
+    def test_parse_datetime_string(self) -> None:
         """Test parsing datetime from ISO format string."""
         dt_str = "2025-04-01T10:00:00"
         result = _parse_datetime(dt_str)
         assert result == datetime(2025, 4, 1, 10, 0, 0)
 
-    def test_parse_datetime_invalid(self):
+    def test_parse_datetime_invalid(self) -> None:
         """Test parsing with invalid input."""
         result = _parse_datetime("not-a-datetime")
         assert result is None
 
-    def test_always_available_mode(self, sample_datetime):
+    def test_always_available_mode(self, sample_datetime: Any) -> None:
         """Test always_available mode."""
         end_time = sample_datetime + timedelta(hours=1)
         available, reason = _check_availability_by_mode(
@@ -46,7 +47,7 @@ class TestCalendarMock:
         assert available is True
         assert "available" in reason.lower()
 
-    def test_always_busy_mode(self, sample_datetime):
+    def test_always_busy_mode(self, sample_datetime: Any) -> None:
         """Test always_busy mode."""
         end_time = sample_datetime + timedelta(hours=1)
         available, reason = _check_availability_by_mode(
@@ -55,7 +56,7 @@ class TestCalendarMock:
         assert available is False
         assert "busy" in reason.lower()
 
-    def test_business_hours_mode_within(self):
+    def test_business_hours_mode_within(self) -> None:
         """Test business_hours mode with time within business hours."""
         start_time = datetime(2025, 4, 1, 10, 0, 0)  # 10 AM
         end_time = datetime(2025, 4, 1, 11, 0, 0)  # 11 AM
@@ -65,7 +66,7 @@ class TestCalendarMock:
         assert available is True
         assert "business hours" in reason.lower()
 
-    def test_business_hours_mode_outside(self):
+    def test_business_hours_mode_outside(self) -> None:
         """Test business_hours mode with time outside business hours."""
         start_time = datetime(2025, 4, 1, 18, 0, 0)  # 6 PM
         end_time = datetime(2025, 4, 1, 19, 0, 0)  # 7 PM
@@ -75,7 +76,7 @@ class TestCalendarMock:
         assert available is False
         assert "outside business hours" in reason.lower()
 
-    def test_weekdays_mode_weekday(self):
+    def test_weekdays_mode_weekday(self) -> None:
         """Test weekdays mode with a weekday."""
         # April 1, 2025 is a Tuesday
         start_time = datetime(2025, 4, 1, 10, 0, 0)
@@ -86,7 +87,7 @@ class TestCalendarMock:
         assert available is True
         assert "weekday" in reason.lower()
 
-    def test_weekdays_mode_weekend(self):
+    def test_weekdays_mode_weekend(self) -> None:
         """Test weekdays mode with a weekend day."""
         # April 5, 2025 is a Saturday
         start_time = datetime(2025, 4, 5, 10, 0, 0)
@@ -98,7 +99,7 @@ class TestCalendarMock:
         assert "weekend" in reason.lower()
 
     @patch("random.random")
-    def test_random_mode_available(self, mock_random):
+    def test_random_mode_available(self, mock_random: Any) -> None:
         """Test random mode when it returns available."""
         mock_random.return_value = 0.5  # Below 0.7 threshold, so available
         start_time = datetime(2025, 4, 1, 10, 0, 0)
@@ -110,7 +111,7 @@ class TestCalendarMock:
         assert "available" in reason.lower()
 
     @patch("random.random")
-    def test_random_mode_busy(self, mock_random):
+    def test_random_mode_busy(self, mock_random: Any) -> None:
         """Test random mode when it returns busy."""
         mock_random.return_value = 0.8  # Above 0.7 threshold, so busy
         start_time = datetime(2025, 4, 1, 10, 0, 0)
@@ -121,7 +122,7 @@ class TestCalendarMock:
         assert available is False
         assert "busy" in reason.lower()
 
-    def test_main_function_with_datetime_objects(self, sample_datetime):
+    def test_main_function_with_datetime_objects(self, sample_datetime: Any) -> None:
         """Test the main check_mock_availability function with datetime objects."""
         start_time = sample_datetime
         end_time = sample_datetime + timedelta(hours=1)
@@ -135,7 +136,7 @@ class TestCalendarMock:
         assert "alternative_times" in result
         assert result["available"] is True
 
-    def test_main_function_with_strings(self):
+    def test_main_function_with_strings(self) -> None:
         """Test the main check_mock_availability function with ISO date strings."""
         start_time = "2025-04-01T10:00:00"
         end_time = "2025-04-01T11:00:00"
@@ -149,7 +150,7 @@ class TestCalendarMock:
         assert "alternative_times" in result
         assert result["available"] is True
 
-    def test_main_function_with_invalid_input(self):
+    def test_main_function_with_invalid_input(self) -> None:
         """Test the main check_mock_availability function with invalid input."""
         start_time = "not-a-datetime"
         end_time = "2025-04-01T11:00:00"
@@ -163,7 +164,7 @@ class TestCalendarMock:
         assert result["available"] is False
         assert "Invalid datetime format" in result["reason"]
 
-    def test_generate_alternative_times(self, sample_datetime):
+    def test_generate_alternative_times(self, sample_datetime: Any) -> None:
         """Test generating alternative times."""
         start_time = sample_datetime
         end_time = sample_datetime + timedelta(hours=1)

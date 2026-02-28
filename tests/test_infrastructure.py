@@ -4,6 +4,7 @@ import email
 import os
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from typing import Any
 
 import pytest
 
@@ -22,7 +23,7 @@ from tests.test_utils import (
 class TestTestUtils:
     """Test the test utilities."""
 
-    def test_random_string(self):
+    def test_random_string(self) -> None:
         """Test random string generation."""
         # Test default length
         s1 = random_string()
@@ -39,7 +40,7 @@ class TestTestUtils:
         s4 = random_string(20)
         assert s3 != s4  # This could theoretically fail but very unlikely
 
-    def test_random_email_address(self):
+    def test_random_email_address(self) -> None:
         """Test random email address generation."""
         email1 = random_email_address()
         assert "@" in email1
@@ -52,7 +53,7 @@ class TestTestUtils:
         email2 = random_email_address()
         assert email1 != email2
 
-    def test_random_name(self):
+    def test_random_name(self) -> None:
         """Test random name generation."""
         name1 = random_name()
         assert " " in name1  # Should have first and last name
@@ -60,7 +61,7 @@ class TestTestUtils:
         assert len(first) > 0
         assert len(last) > 0
 
-    def test_generate_test_emails(self):
+    def test_generate_test_emails(self) -> None:
         """Test generating a list of test emails."""
         # Test with default parameters
         emails = generate_test_emails(count=5)
@@ -82,7 +83,7 @@ class TestTestUtils:
         has_attachments = any(len(email.attachments) > 0 for email in emails)
         assert has_attachments
 
-    def test_parse_message_to_dict(self):
+    def test_parse_message_to_dict(self) -> None:
         """Test parsing an email message to a dictionary."""
         # Create a simple message
         msg = MIMEText("This is a test message")
@@ -118,7 +119,7 @@ class TestTestUtils:
         assert parsed["parts"][1]["content_type"] == "text/html"
         assert parsed["parts"][1]["body"] == "<p>HTML content</p>"
 
-    def test_assert_email_equals(self):
+    def test_assert_email_equals(self) -> None:
         """Test asserting that two Email objects are equal."""
         email1 = Email(
             message_id="<test-123@example.com>",
@@ -159,7 +160,7 @@ class TestTestUtils:
         with pytest.raises(AssertionError):
             assert_email_equals(email1, email3)
 
-    def test_create_mock_folder_list(self):
+    def test_create_mock_folder_list(self) -> None:
         """Test creating a mock folder list."""
         folders = create_mock_folder_list()
         assert isinstance(folders, list)
@@ -182,7 +183,7 @@ class TestTestUtils:
 class TestFixtures:
     """Test the pytest fixtures."""
 
-    def test_mock_imap_client(self, mock_imap_client):
+    def test_mock_imap_client(self, mock_imap_client: Any) -> None:
         """Test the mock IMAP client fixture."""
         assert mock_imap_client is not None
 
@@ -201,7 +202,7 @@ class TestFixtures:
         mock_imap_client.search.return_value = [10, 20, 30]
         assert mock_imap_client.search() == [10, 20, 30]
 
-    def test_test_email_message_simple(self, test_email_message_simple):
+    def test_test_email_message_simple(self, test_email_message_simple: Any) -> None:
         """Test the simple email message fixture."""
         assert test_email_message_simple is not None
         assert test_email_message_simple["Subject"] == "Simple Test Email"
@@ -211,7 +212,7 @@ class TestFixtures:
         assert not test_email_message_simple.is_multipart()
         assert test_email_message_simple.get_content_type() == "text/plain"
 
-    def test_test_email_message_multipart(self, test_email_message_multipart):
+    def test_test_email_message_multipart(self, test_email_message_multipart: Any) -> None:
         """Test the multipart email message fixture."""
         assert test_email_message_multipart is not None
         assert test_email_message_multipart["Subject"] == "Multipart Test Email"
@@ -223,7 +224,7 @@ class TestFixtures:
         assert parts[0].get_content_type() == "text/plain"
         assert parts[1].get_content_type() == "text/html"
 
-    def test_test_email_message_with_attachment(self, test_email_message_with_attachment):
+    def test_test_email_message_with_attachment(self, test_email_message_with_attachment: Any) -> None:
         """Test the email message with attachment fixture."""
         assert test_email_message_with_attachment is not None
         assert test_email_message_with_attachment["Subject"] == "Email with Attachment"
@@ -240,7 +241,7 @@ class TestFixtures:
         assert "attachment" in disposition
         assert "test.txt" in disposition
 
-    def test_test_email_message_encoded_headers(self, test_email_message_encoded_headers):
+    def test_test_email_message_encoded_headers(self, test_email_message_encoded_headers: Any) -> None:
         """Test the email message with encoded headers fixture."""
         assert test_email_message_encoded_headers is not None
 
@@ -254,7 +255,7 @@ class TestFixtures:
         subject_header = test_email_message_encoded_headers["Subject"]
         assert "=?utf-8?" in subject_header
 
-    def test_make_test_email_message(self, make_test_email_message):
+    def test_make_test_email_message(self, make_test_email_message: Any) -> None:
         """Test the factory fixture for creating email messages."""
         # Test with default parameters
         msg = make_test_email_message()
@@ -292,7 +293,7 @@ class TestFixtures:
         assert "text/plain" in parts[2].get_content_type() or parts[2].get_content_type() == "application/octet-stream"
         assert "test.txt" in parts[2].get("Content-Disposition", "")
 
-    def test_test_email_response_data(self, test_email_response_data):
+    def test_test_email_response_data(self, test_email_response_data: Any) -> None:
         """Test the IMAP email response data fixture."""
         assert test_email_response_data is not None
         assert b"BODY[]" in test_email_response_data
@@ -308,7 +309,7 @@ class TestFixtures:
         assert b"Subject: Test Email" in body_data
         assert b"This is a test email body." in body_data
 
-    def test_make_test_email_response_data(self, make_test_email_response_data):
+    def test_make_test_email_response_data(self, make_test_email_response_data: Any) -> None:
         """Test the factory fixture for creating IMAP response data."""
         # Test with default parameters
         data = make_test_email_response_data()
@@ -339,7 +340,7 @@ class TestFixtures:
         assert b"Subject: Custom Subject" in body_data
         assert b"Custom body text" in body_data
 
-    def test_test_email_model(self, test_email_model):
+    def test_test_email_model(self, test_email_model: Any) -> None:
         """Test the Email model fixture."""
         assert test_email_model is not None
         assert test_email_model.message_id == "<test-123@example.com>"
@@ -352,7 +353,7 @@ class TestFixtures:
         assert test_email_model.folder == "INBOX"
         assert test_email_model.uid == 12345
 
-    def test_configure_test_env(self, configure_test_env):
+    def test_configure_test_env(self, configure_test_env: Any) -> None:
         """Test the environment configuration fixture."""
         assert "IMAP_SERVER" in os.environ
         assert os.environ["IMAP_SERVER"] == "imap.example.com"

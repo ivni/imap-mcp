@@ -3,6 +3,7 @@
 import os
 import ssl
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -21,13 +22,13 @@ from imap_mcp.config import (
 class TestCreateSslContext:
     """Tests for the create_ssl_context helper."""
 
-    def test_default_context_has_verification(self):
+    def test_default_context_has_verification(self) -> None:
         """Default context must have cert verification enabled."""
         ctx = create_ssl_context()
         assert ctx.check_hostname is True
         assert ctx.verify_mode == ssl.CERT_REQUIRED
 
-    def test_custom_ca_bundle_loaded(self, tmp_path):
+    def test_custom_ca_bundle_loaded(self, tmp_path: Path) -> None:
         """Custom CA bundle path is loaded into the context."""
         ca_file = tmp_path / "ca-bundle.pem"
         ca_file.write_text("dummy")
@@ -38,12 +39,12 @@ class TestCreateSslContext:
             mock_load.assert_any_call(str(ca_file))
         assert isinstance(ctx, ssl.SSLContext)
 
-    def test_missing_ca_bundle_raises_error(self):
+    def test_missing_ca_bundle_raises_error(self) -> None:
         """Non-existent CA bundle path raises FileNotFoundError."""
         with pytest.raises(FileNotFoundError, match="TLS CA bundle file not found"):
             create_ssl_context("/nonexistent/path/ca-bundle.pem")
 
-    def test_none_ca_bundle_uses_system_defaults(self):
+    def test_none_ca_bundle_uses_system_defaults(self) -> None:
         """None ca_bundle uses system default certificate store."""
         ctx = create_ssl_context(None)
         assert isinstance(ctx, ssl.SSLContext)
@@ -53,7 +54,7 @@ class TestCreateSslContext:
 class TestImapConfig:
     """Test cases for the ImapConfig class."""
 
-    def test_init(self):
+    def test_init(self) -> None:
         """Test ImapConfig initialization."""
         config = ImapConfig(
             host="imap.example.com",
@@ -78,7 +79,7 @@ class TestImapConfig:
         )
         assert config.use_ssl is False
 
-    def test_from_dict(self, monkeypatch):
+    def test_from_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test creating ImapConfig from a dictionary."""
         monkeypatch.setenv("IMAP_PASSWORD", "env_password")
 
@@ -119,7 +120,7 @@ class TestImapConfig:
         config = ImapConfig.from_dict(non_ssl_data)
         assert config.port == 143  # Default non-SSL port
 
-    def test_from_dict_with_env_password(self, monkeypatch):
+    def test_from_dict_with_env_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test creating ImapConfig with password from environment variable."""
         monkeypatch.setenv("IMAP_PASSWORD", "env_password")
 
@@ -131,7 +132,7 @@ class TestImapConfig:
         config = ImapConfig.from_dict(data)
         assert config.password == "env_password"
 
-    def test_from_dict_ignores_config_password(self, monkeypatch):
+    def test_from_dict_ignores_config_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that password in config dict is ignored — env var is used."""
         monkeypatch.setenv("IMAP_PASSWORD", "env_password")
 
@@ -144,7 +145,7 @@ class TestImapConfig:
         config = ImapConfig.from_dict(data)
         assert config.password == "env_password"
 
-    def test_from_dict_warns_on_config_password(self, monkeypatch, caplog):
+    def test_from_dict_warns_on_config_password(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
         """Test that a warning is logged when config dict contains password."""
         monkeypatch.setenv("IMAP_PASSWORD", "env_password")
 
@@ -160,7 +161,7 @@ class TestImapConfig:
 
         assert "Ignoring 'password' in IMAP config" in caplog.text
 
-    def test_from_dict_missing_password(self, monkeypatch):
+    def test_from_dict_missing_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test error when password env var is not set."""
         monkeypatch.delenv("IMAP_PASSWORD", raising=False)
 
@@ -174,7 +175,7 @@ class TestImapConfig:
 
         assert "IMAP password must be specified" in str(excinfo.value)
 
-    def test_from_dict_missing_required_fields(self, monkeypatch):
+    def test_from_dict_missing_required_fields(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test error when required fields are missing."""
         monkeypatch.setenv("IMAP_PASSWORD", "password")
 
@@ -186,7 +187,7 @@ class TestImapConfig:
         with pytest.raises(KeyError):
             ImapConfig.from_dict({"host": "imap.example.com"})
 
-    def test_tls_ca_bundle_from_env(self, monkeypatch):
+    def test_tls_ca_bundle_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test tls_ca_bundle is read from IMAP_TLS_CA_BUNDLE env var."""
         monkeypatch.setenv("IMAP_PASSWORD", "password")
         monkeypatch.setenv("IMAP_TLS_CA_BUNDLE", "/path/to/ca.pem")
@@ -197,7 +198,7 @@ class TestImapConfig:
         })
         assert config.tls_ca_bundle == "/path/to/ca.pem"
 
-    def test_tls_ca_bundle_from_dict(self, monkeypatch):
+    def test_tls_ca_bundle_from_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test tls_ca_bundle from config dict when env var is not set."""
         monkeypatch.setenv("IMAP_PASSWORD", "password")
         monkeypatch.delenv("IMAP_TLS_CA_BUNDLE", raising=False)
@@ -209,7 +210,7 @@ class TestImapConfig:
         })
         assert config.tls_ca_bundle == "/from/yaml/ca.pem"
 
-    def test_tls_ca_bundle_env_overrides_dict(self, monkeypatch):
+    def test_tls_ca_bundle_env_overrides_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test env var takes precedence over config dict for ca_bundle."""
         monkeypatch.setenv("IMAP_PASSWORD", "password")
         monkeypatch.setenv("IMAP_TLS_CA_BUNDLE", "/env/ca.pem")
@@ -221,7 +222,7 @@ class TestImapConfig:
         })
         assert config.tls_ca_bundle == "/env/ca.pem"
 
-    def test_tls_ca_bundle_defaults_to_none(self, monkeypatch):
+    def test_tls_ca_bundle_defaults_to_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test tls_ca_bundle defaults to None when not configured."""
         monkeypatch.setenv("IMAP_PASSWORD", "password")
         monkeypatch.delenv("IMAP_TLS_CA_BUNDLE", raising=False)
@@ -236,7 +237,7 @@ class TestImapConfig:
 class TestSmtpConfig:
     """Test cases for the SmtpConfig class."""
 
-    def test_init(self):
+    def test_init(self) -> None:
         """Test SmtpConfig initialization."""
         config = SmtpConfig(
             host="smtp.example.com",
@@ -261,7 +262,7 @@ class TestSmtpConfig:
         )
         assert config.use_tls is False
 
-    def test_from_dict(self, monkeypatch):
+    def test_from_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test creating SmtpConfig from a dictionary."""
         monkeypatch.setenv("SMTP_PASSWORD", "env_password")
 
@@ -279,7 +280,7 @@ class TestSmtpConfig:
         assert config.password == "env_password"
         assert config.use_tls is True
 
-    def test_from_dict_defaults(self, monkeypatch):
+    def test_from_dict_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test default port based on use_tls setting."""
         monkeypatch.setenv("SMTP_PASSWORD", "password")
 
@@ -299,7 +300,7 @@ class TestSmtpConfig:
         })
         assert config.port == 465
 
-    def test_from_dict_with_env_password(self, monkeypatch):
+    def test_from_dict_with_env_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test creating SmtpConfig with password from environment variable."""
         monkeypatch.setenv("SMTP_PASSWORD", "env_smtp_password")
 
@@ -311,7 +312,7 @@ class TestSmtpConfig:
         config = SmtpConfig.from_dict(data)
         assert config.password == "env_smtp_password"
 
-    def test_from_dict_ignores_config_password(self, monkeypatch):
+    def test_from_dict_ignores_config_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that password in config dict is ignored — env var is used."""
         monkeypatch.setenv("SMTP_PASSWORD", "env_smtp_password")
 
@@ -324,7 +325,7 @@ class TestSmtpConfig:
         config = SmtpConfig.from_dict(data)
         assert config.password == "env_smtp_password"
 
-    def test_from_dict_warns_on_config_password(self, monkeypatch, caplog):
+    def test_from_dict_warns_on_config_password(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
         """Test that a warning is logged when config dict contains password."""
         monkeypatch.setenv("SMTP_PASSWORD", "env_password")
 
@@ -340,7 +341,7 @@ class TestSmtpConfig:
 
         assert "Ignoring 'password' in SMTP config" in caplog.text
 
-    def test_from_dict_falls_back_to_imap_password(self, monkeypatch):
+    def test_from_dict_falls_back_to_imap_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test SMTP falls back to IMAP_PASSWORD when SMTP_PASSWORD is not set."""
         monkeypatch.delenv("SMTP_PASSWORD", raising=False)
         monkeypatch.setenv("IMAP_PASSWORD", "imap_fallback_password")
@@ -353,7 +354,7 @@ class TestSmtpConfig:
         config = SmtpConfig.from_dict(data)
         assert config.password == "imap_fallback_password"
 
-    def test_from_dict_missing_password(self, monkeypatch):
+    def test_from_dict_missing_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test error when no password env var is set."""
         monkeypatch.delenv("SMTP_PASSWORD", raising=False)
         monkeypatch.delenv("IMAP_PASSWORD", raising=False)
@@ -368,7 +369,7 @@ class TestSmtpConfig:
 
         assert "SMTP password must be specified" in str(excinfo.value)
 
-    def test_from_dict_missing_required_fields(self, monkeypatch):
+    def test_from_dict_missing_required_fields(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test error when required fields are missing."""
         monkeypatch.setenv("SMTP_PASSWORD", "password")
 
@@ -380,7 +381,7 @@ class TestSmtpConfig:
         with pytest.raises(KeyError):
             SmtpConfig.from_dict({"host": "smtp.example.com"})
 
-    def test_tls_ca_bundle_from_env(self, monkeypatch):
+    def test_tls_ca_bundle_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test tls_ca_bundle from SMTP_TLS_CA_BUNDLE env var."""
         monkeypatch.setenv("SMTP_PASSWORD", "password")
         monkeypatch.setenv("SMTP_TLS_CA_BUNDLE", "/smtp/ca.pem")
@@ -392,7 +393,7 @@ class TestSmtpConfig:
         })
         assert config.tls_ca_bundle == "/smtp/ca.pem"
 
-    def test_tls_ca_bundle_falls_back_to_imap(self, monkeypatch):
+    def test_tls_ca_bundle_falls_back_to_imap(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test SMTP falls back to IMAP_TLS_CA_BUNDLE when SMTP var not set."""
         monkeypatch.setenv("SMTP_PASSWORD", "password")
         monkeypatch.delenv("SMTP_TLS_CA_BUNDLE", raising=False)
@@ -404,7 +405,7 @@ class TestSmtpConfig:
         })
         assert config.tls_ca_bundle == "/imap/ca.pem"
 
-    def test_tls_ca_bundle_defaults_to_none(self, monkeypatch):
+    def test_tls_ca_bundle_defaults_to_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test tls_ca_bundle defaults to None when not configured."""
         monkeypatch.setenv("SMTP_PASSWORD", "password")
         monkeypatch.delenv("SMTP_TLS_CA_BUNDLE", raising=False)
@@ -420,7 +421,7 @@ class TestSmtpConfig:
 class TestServerConfig:
     """Test cases for the ServerConfig class."""
 
-    def test_init(self):
+    def test_init(self) -> None:
         """Test ServerConfig initialization."""
         imap_config = ImapConfig(
             host="imap.example.com",
@@ -440,7 +441,7 @@ class TestServerConfig:
         assert server_config.imap == imap_config
         assert server_config.allowed_folders == allowed_folders
 
-    def test_init_with_smtp(self):
+    def test_init_with_smtp(self) -> None:
         """Test ServerConfig with SMTP configuration."""
         imap_config = ImapConfig(
             host="imap.example.com", port=993,
@@ -454,7 +455,7 @@ class TestServerConfig:
         assert server_config.smtp is not None
         assert server_config.smtp.host == "smtp.example.com"
 
-    def test_init_without_smtp(self):
+    def test_init_without_smtp(self) -> None:
         """Test ServerConfig defaults to no SMTP."""
         imap_config = ImapConfig(
             host="imap.example.com", port=993,
@@ -463,7 +464,7 @@ class TestServerConfig:
         server_config = ServerConfig(imap=imap_config)
         assert server_config.smtp is None
 
-    def test_from_dict(self, monkeypatch):
+    def test_from_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test creating ServerConfig from a dictionary."""
         monkeypatch.setenv("IMAP_PASSWORD", "env_password")
 
@@ -500,7 +501,7 @@ class TestServerConfig:
         with pytest.raises(KeyError):
             ServerConfig.from_dict({})
 
-    def test_from_dict_default_inbox_when_not_set(self, monkeypatch):
+    def test_from_dict_default_inbox_when_not_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that allowed_folders defaults to INBOX when key is absent."""
         monkeypatch.setenv("IMAP_PASSWORD", "env_password")
 
@@ -514,7 +515,7 @@ class TestServerConfig:
         config = ServerConfig.from_dict(data)
         assert config.allowed_folders == ["INBOX"]
 
-    def test_from_dict_explicit_empty_means_unrestricted(self, monkeypatch):
+    def test_from_dict_explicit_empty_means_unrestricted(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that allowed_folders: [] explicitly enables unrestricted access."""
         monkeypatch.setenv("IMAP_PASSWORD", "env_password")
 
@@ -529,7 +530,7 @@ class TestServerConfig:
         config = ServerConfig.from_dict(data)
         assert config.allowed_folders is None
 
-    def test_from_dict_warning_when_not_configured(self, monkeypatch, caplog):
+    def test_from_dict_warning_when_not_configured(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
         """Test that a warning is logged when allowed_folders is not configured."""
         monkeypatch.setenv("IMAP_PASSWORD", "env_password")
 
@@ -547,7 +548,7 @@ class TestServerConfig:
         assert "allowed_folders not configured" in caplog.text
         assert "INBOX-only" in caplog.text
 
-    def test_from_dict_info_when_explicitly_empty(self, monkeypatch, caplog):
+    def test_from_dict_info_when_explicitly_empty(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
         """Test that info is logged when allowed_folders is explicitly empty."""
         monkeypatch.setenv("IMAP_PASSWORD", "env_password")
 
@@ -565,7 +566,7 @@ class TestServerConfig:
 
         assert "all folders accessible" in caplog.text
 
-    def test_from_dict_with_smtp(self, monkeypatch):
+    def test_from_dict_with_smtp(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test creating ServerConfig with SMTP section."""
         monkeypatch.setenv("IMAP_PASSWORD", "password")
         monkeypatch.setenv("SMTP_PASSWORD", "smtp_password")
@@ -590,7 +591,7 @@ class TestServerConfig:
 class TestLoadConfig:
     """Test cases for the load_config function."""
 
-    def test_load_from_file(self, monkeypatch, tmp_path):
+    def test_load_from_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """Test loading configuration from a file."""
         monkeypatch.setenv("IMAP_PASSWORD", "env_password")
 
@@ -615,7 +616,7 @@ class TestLoadConfig:
         assert config.imap.password == "env_password"
         assert config.allowed_folders == ["INBOX", "Sent"]
 
-    def test_load_from_default_locations(self, monkeypatch, tmp_path):
+    def test_load_from_default_locations(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """Test loading configuration from default locations."""
         # Clear any environment variables that might affect the test
         for env_var in [
@@ -644,7 +645,7 @@ class TestLoadConfig:
         # Monkeypatch Path.expanduser to return our temp path
         target = Path("~/.config/imap-mcp/config.yaml")
         original_expanduser = Path.expanduser
-        def mock_expanduser(self):
+        def mock_expanduser(self: Path) -> Any:
             if self == target:
                 return temp_file
             return original_expanduser(self)
@@ -652,7 +653,7 @@ class TestLoadConfig:
         monkeypatch.setattr(Path, "expanduser", mock_expanduser)
 
         # Monkeypatch to ensure no other config file is found
-        def mock_exists(path):
+        def mock_exists(path: Any) -> Any:
             if path == temp_file:
                 return True
             return False
@@ -667,7 +668,7 @@ class TestLoadConfig:
         assert config.imap.username == "test@example.com"
         assert config.imap.password == "env_password"
 
-    def test_load_from_env_variables(self, monkeypatch):
+    def test_load_from_env_variables(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test loading configuration from environment variables."""
         # Set environment variables
         monkeypatch.setenv("IMAP_HOST", "imap.example.com")
@@ -679,7 +680,7 @@ class TestLoadConfig:
 
         # Mock open to raise FileNotFoundError
         original_open = open
-        def mock_open(*args, **kwargs):
+        def mock_open(*args: Any, **kwargs: Any) -> Any:
             if args[0] == "nonexistent_file.yaml":
                 raise FileNotFoundError(f"No such file: {args[0]}")
             return original_open(*args, **kwargs)
@@ -702,14 +703,14 @@ class TestLoadConfig:
             config = load_config("nonexistent_file.yaml")
             assert config.imap.use_ssl is False
 
-    def test_load_missing_required_env(self, monkeypatch):
+    def test_load_missing_required_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test error when required environment variables are missing."""
         # Ensure IMAP_HOST is not set
         monkeypatch.delenv("IMAP_HOST", raising=False)
 
         # Mock open to raise FileNotFoundError
         original_open = open
-        def mock_open(*args, **kwargs):
+        def mock_open(*args: Any, **kwargs: Any) -> Any:
             if args[0] == "nonexistent_file.yaml":
                 raise FileNotFoundError(f"No such file: {args[0]}")
             return original_open(*args, **kwargs)
@@ -721,7 +722,7 @@ class TestLoadConfig:
 
             assert "IMAP_HOST environment variable not set" in str(excinfo.value)
 
-    def test_load_smtp_from_env_variables(self, monkeypatch):
+    def test_load_smtp_from_env_variables(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test loading SMTP config from environment variables."""
         monkeypatch.setenv("IMAP_HOST", "imap.example.com")
         monkeypatch.setenv("IMAP_USERNAME", "test@example.com")
@@ -742,7 +743,7 @@ class TestLoadConfig:
         assert config.smtp.password == "smtp_password"
         assert config.smtp.use_tls is False
 
-    def test_load_smtp_fallback_to_imap(self, monkeypatch):
+    def test_load_smtp_fallback_to_imap(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test SMTP falls back to IMAP credentials when SMTP vars not set."""
         monkeypatch.setenv("IMAP_HOST", "imap.example.com")
         monkeypatch.setenv("IMAP_USERNAME", "test@example.com")
@@ -762,7 +763,7 @@ class TestLoadConfig:
         assert config.smtp.password == "password"  # Fallback
         assert config.smtp.port == 587  # Default SMTP port
 
-    def test_load_smtp_partial_override(self, monkeypatch):
+    def test_load_smtp_partial_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test partial SMTP override — only host, rest falls back."""
         monkeypatch.setenv("IMAP_HOST", "imap.example.com")
         monkeypatch.setenv("IMAP_USERNAME", "test@example.com")
@@ -778,7 +779,7 @@ class TestLoadConfig:
         assert config.smtp.username == "test@example.com"  # Fallback from IMAP
         assert config.smtp.password == "password"  # Fallback from IMAP
 
-    def test_load_from_yaml_with_smtp(self, monkeypatch, tmp_path):
+    def test_load_from_yaml_with_smtp(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """Test loading SMTP config from YAML file."""
         monkeypatch.setenv("IMAP_PASSWORD", "imap_env_password")
         monkeypatch.setenv("SMTP_PASSWORD", "smtp_env_password")
@@ -810,7 +811,7 @@ class TestLoadConfig:
         assert config.smtp.password == "smtp_env_password"
         assert config.smtp.use_tls is False
 
-    def test_load_env_without_allowed_folders_defaults_to_inbox(self, monkeypatch):
+    def test_load_env_without_allowed_folders_defaults_to_inbox(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that missing IMAP_ALLOWED_FOLDERS defaults to INBOX."""
         monkeypatch.setenv("IMAP_HOST", "imap.example.com")
         monkeypatch.setenv("IMAP_PORT", "993")
@@ -823,7 +824,7 @@ class TestLoadConfig:
 
         assert config.allowed_folders == ["INBOX"]
 
-    def test_load_env_empty_allowed_folders_means_unrestricted(self, monkeypatch):
+    def test_load_env_empty_allowed_folders_means_unrestricted(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that IMAP_ALLOWED_FOLDERS='' enables unrestricted access."""
         monkeypatch.setenv("IMAP_HOST", "imap.example.com")
         monkeypatch.setenv("IMAP_PORT", "993")
@@ -836,7 +837,7 @@ class TestLoadConfig:
 
         assert config.allowed_folders is None
 
-    def test_load_env_allowed_folders_strips_whitespace(self, monkeypatch):
+    def test_load_env_allowed_folders_strips_whitespace(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that IMAP_ALLOWED_FOLDERS values are trimmed."""
         monkeypatch.setenv("IMAP_HOST", "imap.example.com")
         monkeypatch.setenv("IMAP_USERNAME", "test@example.com")
@@ -848,7 +849,7 @@ class TestLoadConfig:
 
         assert config.allowed_folders == ["INBOX", "Sent", "Archive"]
 
-    def test_load_yaml_without_allowed_folders_defaults_to_inbox(self, monkeypatch, tmp_path):
+    def test_load_yaml_without_allowed_folders_defaults_to_inbox(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """Test that YAML without allowed_folders key defaults to INBOX."""
         monkeypatch.setenv("IMAP_PASSWORD", "env_password")
 
@@ -866,7 +867,7 @@ class TestLoadConfig:
         config = load_config(str(config_file))
         assert config.allowed_folders == ["INBOX"]
 
-    def test_invalid_config(self, monkeypatch, tmp_path):
+    def test_invalid_config(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """Test error when config is invalid."""
         monkeypatch.setenv("IMAP_PASSWORD", "password")
 
@@ -891,7 +892,7 @@ class TestLoadConfig:
 class TestMaybeLoadDotenv:
     """Tests for _maybe_load_dotenv opt-in .env loading."""
 
-    def test_not_loaded_when_env_var_unset(self, monkeypatch):
+    def test_not_loaded_when_env_var_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Dotenv must NOT be loaded when IMAP_MCP_LOAD_DOTENV is absent."""
         monkeypatch.delenv("IMAP_MCP_LOAD_DOTENV", raising=False)
         with patch("imap_mcp.config.os.environ.get", wraps=os.environ.get):
@@ -899,14 +900,14 @@ class TestMaybeLoadDotenv:
                 _maybe_load_dotenv()
         mock_load.assert_not_called()
 
-    def test_loaded_when_env_var_true(self, monkeypatch):
+    def test_loaded_when_env_var_true(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Dotenv must be loaded when IMAP_MCP_LOAD_DOTENV=true."""
         monkeypatch.setenv("IMAP_MCP_LOAD_DOTENV", "true")
         with patch("dotenv.load_dotenv") as mock_load:
             _maybe_load_dotenv()
         mock_load.assert_called_once()
 
-    def test_loaded_case_insensitive(self, monkeypatch):
+    def test_loaded_case_insensitive(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """IMAP_MCP_LOAD_DOTENV should be case-insensitive."""
         for value in ("True", "TRUE", "tRuE"):
             monkeypatch.setenv("IMAP_MCP_LOAD_DOTENV", value)
@@ -915,7 +916,7 @@ class TestMaybeLoadDotenv:
             mock_load.assert_called_once()
 
     @pytest.mark.parametrize("value", ["false", "1", "yes", "on", ""])
-    def test_not_loaded_for_non_true_values(self, monkeypatch, value):
+    def test_not_loaded_for_non_true_values(self, monkeypatch: pytest.MonkeyPatch, value: Any) -> None:
         """Only the literal 'true' (case-insensitive) should trigger loading."""
         monkeypatch.setenv("IMAP_MCP_LOAD_DOTENV", value)
         with patch("dotenv.load_dotenv") as mock_load:
