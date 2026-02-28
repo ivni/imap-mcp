@@ -196,5 +196,87 @@ class TestAttachmentSizeLimits(unittest.TestCase):
         self.assertEqual(attachment.content_type, "application/octet-stream")
 
 
+class TestFromMessageAddressParsing(unittest.TestCase):
+    """Test cases for address parsing in Email.from_message() (issue #37)."""
+
+    def test_from_message_quoted_name_with_comma(self) -> None:
+        """Test that a quoted display name with comma is parsed as one address."""
+        msg = MIMEText("Hello", "plain")
+        msg["From"] = "sender@example.com"
+        msg["To"] = '"Doe, John" <john@example.com>'
+        msg["Subject"] = "Test"
+        msg["Message-ID"] = "<test@example.com>"
+
+        email_obj = Email.from_message(msg, uid=1, folder="INBOX")
+
+        self.assertEqual(len(email_obj.to), 1)
+        self.assertEqual(email_obj.to[0].name, "Doe, John")
+        self.assertEqual(email_obj.to[0].address, "john@example.com")
+
+    def test_from_message_multiple_recipients_with_comma_in_name(self) -> None:
+        """Test multiple recipients where one has a comma in the display name."""
+        msg = MIMEText("Hello", "plain")
+        msg["From"] = "sender@example.com"
+        msg["To"] = '"Doe, John" <john@example.com>, Bob Smith <bob@example.com>'
+        msg["Subject"] = "Test"
+        msg["Message-ID"] = "<test@example.com>"
+
+        email_obj = Email.from_message(msg, uid=1, folder="INBOX")
+
+        self.assertEqual(len(email_obj.to), 2)
+        self.assertEqual(email_obj.to[0].name, "Doe, John")
+        self.assertEqual(email_obj.to[0].address, "john@example.com")
+        self.assertEqual(email_obj.to[1].name, "Bob Smith")
+        self.assertEqual(email_obj.to[1].address, "bob@example.com")
+
+    def test_from_message_cc_with_comma_in_name(self) -> None:
+        """Test that Cc header with comma in display name is parsed correctly."""
+        msg = MIMEText("Hello", "plain")
+        msg["From"] = "sender@example.com"
+        msg["To"] = "recipient@example.com"
+        msg["Cc"] = '"Doe, John" <john@example.com>, Bob Smith <bob@example.com>'
+        msg["Subject"] = "Test"
+        msg["Message-ID"] = "<test@example.com>"
+
+        email_obj = Email.from_message(msg, uid=1, folder="INBOX")
+
+        self.assertEqual(len(email_obj.cc), 2)
+        self.assertEqual(email_obj.cc[0].name, "Doe, John")
+        self.assertEqual(email_obj.cc[0].address, "john@example.com")
+        self.assertEqual(email_obj.cc[1].name, "Bob Smith")
+        self.assertEqual(email_obj.cc[1].address, "bob@example.com")
+
+    def test_from_message_mixed_address_formats(self) -> None:
+        """Test a mix of plain address, comma-in-name, and regular name formats."""
+        msg = MIMEText("Hello", "plain")
+        msg["From"] = "sender@example.com"
+        msg["To"] = (
+            'plain@example.com, "Name, With Comma" <name@example.com>, '
+            "Regular Name <reg@example.com>"
+        )
+        msg["Subject"] = "Test"
+        msg["Message-ID"] = "<test@example.com>"
+
+        email_obj = Email.from_message(msg, uid=1, folder="INBOX")
+
+        self.assertEqual(len(email_obj.to), 3)
+        self.assertEqual(email_obj.to[0].address, "plain@example.com")
+        self.assertEqual(email_obj.to[1].name, "Name, With Comma")
+        self.assertEqual(email_obj.to[1].address, "name@example.com")
+        self.assertEqual(email_obj.to[2].name, "Regular Name")
+        self.assertEqual(email_obj.to[2].address, "reg@example.com")
+
+    def test_from_message_empty_to(self) -> None:
+        """Test that an empty or missing To header results in an empty list."""
+        msg = MIMEText("Hello", "plain")
+        msg["From"] = "sender@example.com"
+        msg["Subject"] = "Test"
+        msg["Message-ID"] = "<test@example.com>"
+
+        email_obj = Email.from_message(msg, uid=1, folder="INBOX")
+
+        self.assertEqual(email_obj.to, [])
+
+
 if __name__ == "__main__":
     unittest.main()

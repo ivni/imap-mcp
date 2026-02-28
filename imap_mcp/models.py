@@ -244,31 +244,34 @@ class Email:
             from_ = EmailAddress(name="", address=from_str)
 
         to: List[EmailAddress] = []
-        for addr in to_str.split(","):
-            addr = addr.strip()
+        for name, addr in email.utils.getaddresses([to_str]):
             if addr:
                 try:
-                    to.append(EmailAddress.parse(addr))
+                    parsed = EmailAddress.parse(addr)
+                    parsed.name = name
+                    to.append(parsed)
                 except ValueError:
-                    to.append(EmailAddress(name="", address=addr))
+                    to.append(EmailAddress(name=name, address=addr))
 
         cc: List[EmailAddress] = []
-        for addr in cc_str.split(","):
-            addr = addr.strip()
+        for name, addr in email.utils.getaddresses([cc_str]):
             if addr:
                 try:
-                    cc.append(EmailAddress.parse(addr))
+                    parsed = EmailAddress.parse(addr)
+                    parsed.name = name
+                    cc.append(parsed)
                 except ValueError:
-                    cc.append(EmailAddress(name="", address=addr))
+                    cc.append(EmailAddress(name=name, address=addr))
 
         bcc: List[EmailAddress] = []
-        for addr in bcc_str.split(","):
-            addr = addr.strip()
+        for name, addr in email.utils.getaddresses([bcc_str]):
             if addr:
                 try:
-                    bcc.append(EmailAddress.parse(addr))
+                    parsed = EmailAddress.parse(addr)
+                    parsed.name = name
+                    bcc.append(parsed)
                 except ValueError:
-                    bcc.append(EmailAddress(name="", address=addr))
+                    bcc.append(EmailAddress(name=name, address=addr))
 
         # Parse date
         date = None
