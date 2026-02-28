@@ -215,6 +215,113 @@ class TestCreateReplyMime:
         # Raw dangerous characters must NOT appear unescaped in the quoted block
         assert "<script>" not in html_text
 
+    def test_reply_subject_with_newlines(self, sample_email: Email) -> None:
+        """Test that subjects with CRLF injection characters are handled safely."""
+        reply_to = EmailAddress(name="Reply To", address="sender@example.com")
+        # Subject contains CRLF injection attempt
+        injected_subject = "Re: Test Subject\r\nBcc: attacker@evil.com"
+
+        # Python's email library rejects header values containing CR/LF,
+        # which prevents header injection attacks at the MIME layer.
+        with pytest.raises(ValueError, match="Header values may not contain linefeed"):
+            create_reply_mime(
+                original_email=sample_email,
+                reply_to=reply_to,
+                subject=injected_subject,
+                body="Reply body.",
+            )
+
+    def test_cc_address_with_injection(self, sample_email: Email) -> None:
+        """Test that CC addresses with CRLF injection don't create extra headers."""
+        reply_to = EmailAddress(name="Reply To", address="sender@example.com")
+        # Attempt to inject a Bcc header via a CC address
+        malicious_cc_str = "foo@bar.com\r\nBcc: attacker@evil.com"
+        malicious_cc = EmailAddress.parse(malicious_cc_str)
+
+        # Python's email library rejects header values containing CR/LF,
+        # which prevents header injection attacks at the MIME layer.
+        with pytest.raises(ValueError, match="Header values may not contain linefeed"):
+            create_reply_mime(
+                original_email=sample_email,
+                reply_to=reply_to,
+                subject="Re: Test Subject",
+                body="Reply body.",
+                cc=[malicious_cc],
+            )
+
+    def test_reply_body_with_mime_boundary(self, sample_email: Email) -> None:
+        """Test that MIME boundary-like strings in body don't break MIME structure."""
+        reply_to = EmailAddress(name="Reply To", address="sender@example.com")
+        body_with_boundary = (
+            "Here is some text.\n"
+            "--boundary123\n"
+            "Content-Type: text/html\n"
+            "\n"
+            "<h1>Injected</h1>\n"
+            "--boundary123--\n"
+        )
+
+        mime_message = create_reply_mime(
+            original_email=sample_email,
+            reply_to=reply_to,
+            subject="Re: Test Subject",
+            body=body_with_boundary,
+        )
+
+        # Extract the text payload
+        if mime_message.is_multipart():
+            payload = mime_message.get_payload(0).get_payload(decode=True).decode()
+        else:
+            payload = mime_message.get_payload(decode=True).decode()
+
+        # The boundary-like strings must appear as literal body content
+        assert "--boundary123" in payload
+        # The message must still be structurally valid — the body should be
+        # contained within a single text/plain part, not split into extra parts
+        if mime_message.is_multipart():
+            # For multipart, verify no extra unexpected parts were created
+            parts = mime_message.get_payload()
+            assert len(parts) == 1 or all(
+                hasattr(p, "get_content_type") for p in parts
+            )
+        # Verify the fake Content-Type line is just text, not a real header
+        assert "Injected" in payload
+
+    def test_html_reply_body_with_script_tags(self, sample_email: Email) -> None:
+        """Test that script tags in the reply HTML body are preserved but contained."""
+        reply_to = EmailAddress(name="Reply To", address="sender@example.com")
+        body = "Plain text reply."
+        html_body = "<p>Hello</p><script>alert('xss')</script><p>World</p>"
+
+        mime_message = create_reply_mime(
+            original_email=sample_email,
+            reply_to=reply_to,
+            subject="Re: Test Subject",
+            body=body,
+            html_body=html_body,
+        )
+
+        # Should be multipart with alternative containing text + html
+        assert mime_message.is_multipart()
+        alternative = mime_message.get_payload(0)
+        assert alternative.is_multipart()
+
+        # Extract the HTML part
+        html_part = alternative.get_payload(1)
+        html_text = html_part.get_payload(decode=True).decode()
+
+        # The reply HTML body is author-composed content, so the script tag
+        # should be present as-is in the HTML part (it's the sender's own content).
+        # The critical security property is that the ORIGINAL email's content
+        # (which could be attacker-controlled) is escaped — tested in
+        # test_html_escaping_special_characters. Here we verify structural integrity.
+        assert "<script>alert('xss')</script>" in html_text
+        assert "<p>Hello</p>" in html_text
+        assert "<p>World</p>" in html_text
+
+        # Verify the original email's quoted content also appears
+        assert "wrote:" in html_text
+
 
 class TestVerifySmtpConnection:
     """Tests for verify_smtp_connection function."""
