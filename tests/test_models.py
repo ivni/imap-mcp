@@ -6,13 +6,13 @@ from email.header import Header
 from email.message import Message
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from imap_mcp.models import (
+    MAX_ATTACHMENT_SIZE,
     Email,
     EmailAddress,
     EmailAttachment,
-    MAX_ATTACHMENT_SIZE,
     decode_mime_header,
 )
 

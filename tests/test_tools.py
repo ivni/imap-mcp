@@ -11,7 +11,7 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from imap_mcp.imap_client import ImapClient
 from imap_mcp.models import Email, EmailAddress, EmailContent
-from imap_mcp.tools import _validate_tool_folder, register_tools, require_confirmation
+from imap_mcp.tools import register_tools, require_confirmation
 
 # --- Shared fixtures ---
 
@@ -651,7 +651,7 @@ class TestSearchEmailsFolderEnforcement:
         ctx = _make_confirmed_context()
 
         with patch('imap_mcp.tools.get_client_from_context', return_value=client):
-            result = await search_emails("test", ctx, folder=None)
+            await search_emails("test", ctx, folder=None)
 
         # list_folders should be called once (to discover folders)
         client.list_folders.assert_called_once()
@@ -700,7 +700,7 @@ class TestSearchEmailsFolderEnforcement:
         ctx = _make_confirmed_context()
 
         with patch('imap_mcp.tools.get_client_from_context', return_value=client):
-            result = await search_emails("test", ctx, folder=None)
+            await search_emails("test", ctx, folder=None)
 
         # list_folders should be called once
         client.list_folders.assert_called_once()

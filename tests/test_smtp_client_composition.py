@@ -232,22 +232,13 @@ class TestCreateReplyMime:
             )
 
     def test_cc_address_with_injection(self, sample_email: Email) -> None:
-        """Test that CC addresses with CRLF injection don't create extra headers."""
-        reply_to = EmailAddress(name="Reply To", address="sender@example.com")
-        # Attempt to inject a Bcc header via a CC address
+        """Test that CC addresses with CRLF injection are rejected at parse time."""
+        # Attempt to inject a Bcc header via a CC address.
+        # EmailAddress.parse() validates the address and rejects CRLF characters
+        # before they can reach the MIME layer — defense in depth.
         malicious_cc_str = "foo@bar.com\r\nBcc: attacker@evil.com"
-        malicious_cc = EmailAddress.parse(malicious_cc_str)
-
-        # Python's email library rejects header values containing CR/LF,
-        # which prevents header injection attacks at the MIME layer.
-        with pytest.raises(ValueError, match="Header values may not contain linefeed"):
-            create_reply_mime(
-                original_email=sample_email,
-                reply_to=reply_to,
-                subject="Re: Test Subject",
-                body="Reply body.",
-                cc=[malicious_cc],
-            )
+        with pytest.raises(ValueError, match="Invalid email address"):
+            EmailAddress.parse(malicious_cc_str)
 
     def test_reply_body_with_mime_boundary(self, sample_email: Email) -> None:
         """Test that MIME boundary-like strings in body don't break MIME structure."""

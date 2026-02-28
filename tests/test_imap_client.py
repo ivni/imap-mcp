@@ -1377,7 +1377,7 @@ class TestFetchLimits:
 
             # Create a list of 600 UIDs (exceeds MAX_FETCH_UIDS=500)
             large_uid_list = list(range(1, 601))
-            emails = client.fetch_emails(large_uid_list, folder="INBOX")
+            client.fetch_emails(large_uid_list, folder="INBOX")
 
             # Verify the fetch call received at most MAX_FETCH_UIDS UIDs
             call_args = mock_imap_client.fetch.call_args
@@ -1412,7 +1412,7 @@ class TestFetchLimits:
 
             client.connect()
 
-            emails = client.fetch_emails(small_uid_list, folder="INBOX")
+            client.fetch_emails(small_uid_list, folder="INBOX")
 
             # Verify all 10 UIDs were passed through
             call_args = mock_imap_client.fetch.call_args
