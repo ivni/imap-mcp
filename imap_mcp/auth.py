@@ -7,6 +7,7 @@ the MCP SDK's TokenVerifier protocol.
 
 import json
 import logging
+import os
 import urllib.request
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +16,41 @@ from jwt import PyJWKClient, PyJWKClientError
 from mcp.server.auth.provider import AccessToken
 
 logger = logging.getLogger("imap_mcp.auth")
+
+
+def _validate_issuer_url(issuer_url: str) -> None:
+    """Validate that the OIDC issuer URL uses HTTPS.
+
+    Rejects plain HTTP unless OIDC_ALLOW_HTTP=true is set (for local
+    development). Also rejects non-URL strings.
+
+    Args:
+        issuer_url: The OIDC issuer URL to validate.
+
+    Raises:
+        ValueError: If the URL is not HTTPS (and HTTP is not explicitly
+            allowed) or if the string is not a valid HTTP(S) URL.
+    """
+    if issuer_url.startswith("https://"):
+        return
+
+    if issuer_url.startswith("http://"):
+        allow_http = os.environ.get("OIDC_ALLOW_HTTP", "").lower() == "true"
+        if allow_http:
+            logger.warning(
+                "OIDC issuer URL uses HTTP (not HTTPS): %s — "
+                "allowed by OIDC_ALLOW_HTTP=true (development only)",
+                issuer_url,
+            )
+            return
+        raise ValueError(
+            f"OIDC issuer URL must use HTTPS: {issuer_url}. "
+            "Set OIDC_ALLOW_HTTP=true for local development."
+        )
+
+    raise ValueError(
+        f"OIDC issuer URL must be a valid HTTP(S) URL: {issuer_url}"
+    )
 
 
 class JWKSKeyManager:
@@ -89,6 +125,7 @@ class OIDCJWTVerifier:
                 audience validation is skipped.
             jwks_cache_lifetime: Seconds to cache JWKS keys (default: 3600).
         """
+        _validate_issuer_url(issuer)
         self._issuer = issuer
         self._audience = audience
         self._key_manager = JWKSKeyManager(jwks_uri, jwks_cache_lifetime)
@@ -184,8 +221,10 @@ def discover_jwks_uri(issuer_url: str) -> str:
         The JWKS endpoint URL.
 
     Raises:
-        ValueError: If discovery fails or the document lacks jwks_uri.
+        ValueError: If the URL is not HTTPS, or discovery fails, or
+            the document lacks jwks_uri.
     """
+    _validate_issuer_url(issuer_url)
     discovery_url = issuer_url.rstrip("/") + "/.well-known/openid-configuration"
     try:
         with urllib.request.urlopen(discovery_url, timeout=10) as response:

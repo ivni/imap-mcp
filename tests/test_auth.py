@@ -1,6 +1,7 @@
 """Tests for JWT authentication module."""
 
 import json
+import os
 import time
 from typing import Any, Callable, Dict
 from unittest import mock
@@ -356,3 +357,59 @@ class TestDiscoverJWKSUri:
         # No double slashes (except https://)
         path_part = call_url.replace("https://", "")
         assert "//" not in path_part
+
+
+# --- Tests for issuer URL validation ---
+
+
+class TestIssuerURLValidation:
+    """Tests for OIDC issuer URL HTTPS validation."""
+
+    def test_discover_jwks_uri_rejects_http(self) -> None:
+        """Test that discover_jwks_uri rejects plain HTTP issuer URLs."""
+        with pytest.raises(ValueError, match="HTTPS"):
+            discover_jwks_uri("http://auth.example.com/")
+
+    def test_verifier_rejects_http_issuer(self) -> None:
+        """Test that OIDCJWTVerifier rejects plain HTTP issuer URLs."""
+        with pytest.raises(ValueError, match="HTTPS"):
+            OIDCJWTVerifier(
+                issuer="http://auth.example.com/",
+                jwks_uri="https://auth.example.com/jwks/",
+            )
+
+    def test_http_allowed_with_env_var(self) -> None:
+        """Test that HTTP is allowed when OIDC_ALLOW_HTTP=true is set."""
+        discovery_response = json.dumps(
+            {
+                "issuer": "http://localhost:8080/",
+                "jwks_uri": "http://localhost:8080/jwks/",
+            }
+        ).encode()
+
+        with mock.patch.dict(os.environ, {"OIDC_ALLOW_HTTP": "true"}):
+            with mock.patch("urllib.request.urlopen") as mock_urlopen:
+                mock_response = mock.MagicMock()
+                mock_response.read.return_value = discovery_response
+                mock_response.__enter__ = mock.MagicMock(
+                    return_value=mock_response
+                )
+                mock_response.__exit__ = mock.MagicMock(return_value=False)
+                mock_urlopen.return_value = mock_response
+
+                result = discover_jwks_uri("http://localhost:8080/")
+
+        assert result == "http://localhost:8080/jwks/"
+
+    def test_discover_jwks_uri_rejects_non_url(self) -> None:
+        """Test that discover_jwks_uri rejects non-URL strings."""
+        with pytest.raises(ValueError, match="valid HTTP\\(S\\) URL"):
+            discover_jwks_uri("not-a-url")
+
+    def test_verifier_accepts_https(self) -> None:
+        """Test that OIDCJWTVerifier accepts HTTPS issuer URLs."""
+        verifier = OIDCJWTVerifier(
+            issuer="https://auth.example.com/",
+            jwks_uri="https://auth.example.com/jwks/",
+        )
+        assert verifier._issuer == "https://auth.example.com/"
