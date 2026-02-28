@@ -1,6 +1,7 @@
 """SMTP client implementation for sending emails."""
 
 import email.utils
+import html
 import logging
 import smtplib
 from datetime import datetime
@@ -168,7 +169,7 @@ def create_reply_mime(
             # Convert plain text to HTML for quoting
             original_text = original_email.content.get_best_content()
             if original_text:
-                escaped_text = original_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                escaped_text = html.escape(original_text)
                 escaped_text = escaped_text.replace("\n", "<br>")
                 html_content += (
                     f'\n<div style="border-top: 1px solid #ccc; margin-top: 20px; padding-top: 10px;">'

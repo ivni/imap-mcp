@@ -29,7 +29,7 @@ class TestCreateReplyMime:
             headers={"References": "<previous@example.com>"}
         )
 
-    def test_create_basic_reply(self, sample_email: Email):
+    def test_create_basic_reply(self, sample_email: Email) -> None:
         """Test creating a basic reply."""
         reply_to = EmailAddress(name="Reply To", address="sender@example.com")
         subject = "Re: Test Subject"
@@ -59,7 +59,7 @@ class TestCreateReplyMime:
         assert "This is a reply." in payload
         assert "Original message content" in payload
 
-    def test_create_reply_all(self, sample_email: Email):
+    def test_create_reply_all(self, sample_email: Email) -> None:
         """Test creating a reply-all."""
         reply_to = EmailAddress(name="Reply To", address="sender@example.com")
         subject = "Re: Test Subject"
@@ -77,7 +77,7 @@ class TestCreateReplyMime:
         assert mime_message["To"] == "Sender Name <sender@example.com>, Recipient Name <recipient@example.com>"
         assert mime_message["Cc"] == "CC Recipient <cc@example.com>"
 
-    def test_create_reply_with_custom_cc(self, sample_email: Email):
+    def test_create_reply_with_custom_cc(self, sample_email: Email) -> None:
         """Test creating a reply with custom CC recipients."""
         reply_to = EmailAddress(name="Reply To", address="sender@example.com")
         subject = "Re: Test Subject"
@@ -98,7 +98,7 @@ class TestCreateReplyMime:
         # Check CC recipients
         assert mime_message["Cc"] == "Custom CC <custom@example.com>, Another CC <another@example.com>"
 
-    def test_create_reply_with_subject_prefix(self, sample_email: Email):
+    def test_create_reply_with_subject_prefix(self, sample_email: Email) -> None:
         """Test creating a reply with a custom subject prefix."""
         reply_to = EmailAddress(name="Reply To", address="sender@example.com")
         body = "This is a reply with custom subject prefix."
@@ -133,7 +133,7 @@ class TestCreateReplyMime:
 
         assert mime_message["Subject"] == "Re: Already Prefixed"
 
-    def test_create_html_reply(self, sample_email: Email):
+    def test_create_html_reply(self, sample_email: Email) -> None:
         """Test creating a reply with HTML content."""
         reply_to = EmailAddress(name="Reply To", address="sender@example.com")
         body = "This is a plain text reply."
@@ -156,7 +156,7 @@ class TestCreateReplyMime:
         html_text = html_part.get_payload(decode=True).decode()
         assert "<p>This is an <b>HTML</b> reply.</p>" in html_text
 
-    def test_quoting_original_content(self, sample_email: Email):
+    def test_quoting_original_content(self, sample_email: Email) -> None:
         """Test proper quoting of original content."""
         reply_to = EmailAddress(name="Reply To", address="sender@example.com")
         body = "This is a reply with original content quoted."
@@ -180,6 +180,40 @@ class TestCreateReplyMime:
         lines = payload.split("\n")
         quoted_lines = [line for line in lines if line.startswith(">")]
         assert any("> Original message content" in line for line in quoted_lines)
+
+    def test_html_escaping_special_characters(self) -> None:
+        """Test that special characters in plain-text replies are properly HTML-escaped."""
+        special_content = """He said "hello" & she said 'goodbye' <script>alert('xss')</script>"""
+        email_with_special = Email(
+            message_id="<special@example.com>",
+            subject="Special Chars",
+            from_=EmailAddress(name="Sender", address="sender@example.com"),
+            to=[EmailAddress(name="Recipient", address="recipient@example.com")],
+            date=datetime.now(),
+            content=EmailContent(text=special_content, html=None),
+            headers={},
+        )
+        reply_to = EmailAddress(name="Replier", address="recipient@example.com")
+
+        mime_message = create_reply_mime(
+            original_email=email_with_special,
+            reply_to=reply_to,
+            body="My reply.",
+            html_body="<p>My reply.</p>",
+        )
+
+        # Extract the HTML part (second payload inside the alternative part)
+        alternative = mime_message.get_payload(0)
+        html_part = alternative.get_payload(1)
+        html_text = html_part.get_payload(decode=True).decode()
+
+        # All five HTML entities must be escaped
+        assert "&amp;" in html_text
+        assert "&lt;script&gt;" in html_text
+        assert "&#x27;" in html_text
+        assert "&quot;" in html_text
+        # Raw dangerous characters must NOT appear unescaped in the quoted block
+        assert "<script>" not in html_text
 
 
 class TestVerifySmtpConnection:
