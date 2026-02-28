@@ -11,7 +11,7 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from imap_mcp.imap_client import ImapClient
 from imap_mcp.models import Email, EmailAddress, EmailContent
-from imap_mcp.tools import register_tools, require_confirmation
+from imap_mcp.tools import _validate_tool_folder, register_tools, require_confirmation
 
 # --- Shared fixtures ---
 
@@ -712,3 +712,102 @@ class TestSearchEmailsFolderEnforcement:
         }
         assert searched_folders == {"INBOX", "Sent", "Trash", "Drafts"}
         assert client.search.call_count == 4
+
+
+class TestToolFolderValidation:
+    """Tests for folder name validation in MCP tool handlers."""
+
+    @pytest.fixture(autouse=True)
+    def patch_get_client(self, mock_client: Any) -> None:
+        """Patch get_client_from_context for this class only."""
+        with patch('imap_mcp.tools.get_client_from_context') as mock_get_client:
+            mock_get_client.return_value = mock_client
+            yield mock_get_client
+
+    @pytest.fixture
+    def mock_context(self) -> Any:
+        """Create a mock context with elicitation support."""
+        return _make_confirmed_context()
+
+    @pytest.mark.asyncio
+    async def test_mark_as_read_rejects_invalid_folder(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that mark_as_read rejects folder names with injection characters."""
+        mock_client._validate_folder_name.side_effect = ValueError(
+            "contains invalid characters"
+        )
+        mark_as_read = tools["mark_as_read"]
+
+        result = await mark_as_read("INBOX\r\nDELETE", 123, mock_context)
+
+        assert "Invalid folder name" in result
+        mock_client.mark_email.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mark_as_read_rejects_disallowed_folder(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that mark_as_read rejects folders not in allowed list."""
+        mock_client._validate_folder_name.return_value = None
+        mock_client._is_folder_allowed.return_value = False
+        mark_as_read = tools["mark_as_read"]
+
+        result = await mark_as_read("SecretFolder", 123, mock_context)
+
+        assert "not in the allowed folders list" in result
+        mock_client.mark_email.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_email_rejects_invalid_folder(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that delete_email rejects folder names with injection characters."""
+        mock_client._validate_folder_name.side_effect = ValueError(
+            "contains invalid characters"
+        )
+        delete_email = tools["delete_email"]
+
+        result = await delete_email("INBOX\r\nDELETE", 123, mock_context)
+
+        assert "Invalid folder name" in result
+        mock_client.delete_email.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_search_emails_rejects_invalid_folder(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that search_emails rejects invalid explicit folder."""
+        mock_client._validate_folder_name.side_effect = ValueError(
+            "contains invalid characters"
+        )
+        search_emails = tools["search_emails"]
+
+        result = await search_emails(
+            "test query", mock_context, folder="BAD\x00FOLDER"
+        )
+
+        assert "Invalid folder name" in result
+        mock_client.search.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_email_rejects_invalid_target_folder(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that process_email rejects invalid target_folder for move."""
+        # Source folder passes validation, target folder fails
+        def validate_side_effect(folder: str) -> None:
+            if folder == "INBOX":
+                return None
+            raise ValueError("contains invalid characters")
+
+        mock_client._validate_folder_name.side_effect = validate_side_effect
+        mock_client._is_folder_allowed.return_value = True
+        process_email = tools["process_email"]
+
+        result = await process_email(
+            "INBOX", 123, "move", mock_context, target_folder="BAD\r\nFOLDER"
+        )
+
+        assert "Invalid folder name" in result
+        mock_client.move_email.assert_not_called()

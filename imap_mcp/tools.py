@@ -16,6 +16,20 @@ from imap_mcp.resources import get_client_from_context
 logger = logging.getLogger(__name__)
 
 
+def _validate_tool_folder(client: ImapClient, folder: str) -> str | None:
+    """Validate folder name and access for tool handlers.
+
+    Returns error message string if validation fails, None if valid.
+    """
+    try:
+        client._validate_folder_name(folder)
+    except ValueError as e:
+        return f"Invalid folder name: {e}"
+    if not client._is_folder_allowed(folder):
+        return f"Folder '{folder}' is not in the allowed folders list"
+    return None
+
+
 class ConfirmAction(BaseModel):
     """Schema for destructive action confirmation elicitation.
 
@@ -128,6 +142,9 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         from imap_mcp.workflows.invite_parser import identify_meeting_invite_details
 
         client = get_client_from_context(ctx)
+        error = _validate_tool_folder(client, folder)
+        if error:
+            return {"is_invite": False, "details": {}, "error": error}
         email_obj = client.fetch_email(uid, folder)
         if not email_obj:
             return {"is_invite": False, "details": {}, "error": f"Email UID {uid} not found"}
@@ -181,6 +198,9 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         from imap_mcp.smtp_client import create_reply_mime
 
         client = get_client_from_context(ctx)
+        error = _validate_tool_folder(client, folder)
+        if error:
+            return {"status": "error", "message": error}
         email_obj = client.fetch_email(uid, folder)
         if not email_obj:
             return {"status": "error", "message": f"Email UID {uid} not found in {folder}"}
@@ -264,6 +284,9 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             Success message or error message
         """
         client = get_client_from_context(ctx)
+        error = _validate_tool_folder(client, folder)
+        if error:
+            return error
 
         try:
             success = client.mark_email(uid, folder, r"\Seen", True)
@@ -293,6 +316,9 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             Success message or error message
         """
         client = get_client_from_context(ctx)
+        error = _validate_tool_folder(client, folder)
+        if error:
+            return error
 
         try:
             success = client.mark_email(uid, folder, r"\Seen", False)
@@ -324,6 +350,9 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             Success message or error message
         """
         client = get_client_from_context(ctx)
+        error = _validate_tool_folder(client, folder)
+        if error:
+            return error
 
         try:
             success = client.mark_email(uid, folder, r"\Flagged", flag)
@@ -358,6 +387,9 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             return "Action cancelled: delete not confirmed by user"
 
         client = get_client_from_context(ctx)
+        error = _validate_tool_folder(client, folder)
+        if error:
+            return error
 
         try:
             success = client.delete_email(uid, folder)
@@ -391,6 +423,10 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             JSON-formatted list of search results
         """
         client = get_client_from_context(ctx)
+        if folder is not None:
+            error = _validate_tool_folder(client, folder)
+            if error:
+                return error
 
         # Define search criteria
         search_criteria_map = {
@@ -489,6 +525,13 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                 return f"Action cancelled: {action} not confirmed by user"
 
         client = get_client_from_context(ctx)
+        error = _validate_tool_folder(client, folder)
+        if error:
+            return error
+        if target_folder:
+            error = _validate_tool_folder(client, target_folder)
+            if error:
+                return error
 
         # Fetch the email first to have context for learning
         email_obj = client.fetch_email(uid, folder)
@@ -576,6 +619,15 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         from imap_mcp.workflows.meeting_reply import generate_meeting_reply_content
 
         client = get_client_from_context(ctx)
+        error = _validate_tool_folder(client, folder)
+        if error:
+            return {
+                "status": "error",
+                "message": error,
+                "draft_uid": None,
+                "draft_folder": None,
+                "availability": None,
+            }
         result: Dict[str, Any] = {
             "status": "error",
             "message": "An error occurred during processing",
