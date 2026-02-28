@@ -811,3 +811,101 @@ class TestToolFolderValidation:
 
         assert "Invalid folder name" in result
         mock_client.move_email.assert_not_called()
+
+
+class TestProcessEmailFailurePaths:
+    """Test that process_email returns failure messages when client methods return False."""
+
+    @pytest.fixture(autouse=True)
+    def patch_get_client(self, mock_client: Any) -> None:
+        """Patch get_client_from_context for this class only."""
+        with patch('imap_mcp.tools.get_client_from_context') as mock_get_client:
+            mock_get_client.return_value = mock_client
+            yield mock_get_client
+
+    @pytest.fixture
+    def mock_context(self) -> Any:
+        """Create a mock context where user confirms all actions."""
+        return _make_confirmed_context()
+
+    @pytest.mark.asyncio
+    async def test_process_email_move_returns_failure(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that process_email returns failure when move_email returns False."""
+        mock_client.move_email.return_value = False
+        process_email = tools["process_email"]
+
+        result = await process_email(
+            "INBOX", 123, "move", mock_context, target_folder="Archive"
+        )
+
+        assert "Failed" in result
+        mock_client.move_email.assert_called_once_with(123, "INBOX", "Archive")
+
+    @pytest.mark.asyncio
+    async def test_process_email_read_returns_failure(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that process_email returns failure when marking as read returns False."""
+        mock_client.mark_email.return_value = False
+        process_email = tools["process_email"]
+
+        result = await process_email("INBOX", 123, "read", mock_context)
+
+        assert "Failed" in result
+        mock_client.mark_email.assert_called_once_with(123, "INBOX", "\\Seen", True)
+
+    @pytest.mark.asyncio
+    async def test_process_email_unread_returns_failure(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that process_email returns failure when marking as unread returns False."""
+        mock_client.mark_email.return_value = False
+        process_email = tools["process_email"]
+
+        result = await process_email("INBOX", 123, "unread", mock_context)
+
+        assert "Failed" in result
+        mock_client.mark_email.assert_called_once_with(123, "INBOX", "\\Seen", False)
+
+    @pytest.mark.asyncio
+    async def test_process_email_flag_returns_failure(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that process_email returns failure when flagging returns False."""
+        mock_client.mark_email.return_value = False
+        process_email = tools["process_email"]
+
+        result = await process_email("INBOX", 123, "flag", mock_context)
+
+        assert "Failed" in result
+        mock_client.mark_email.assert_called_once_with(123, "INBOX", "\\Flagged", True)
+
+    @pytest.mark.asyncio
+    async def test_process_email_unflag_returns_failure(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that process_email returns failure when unflagging returns False."""
+        mock_client.mark_email.return_value = False
+        process_email = tools["process_email"]
+
+        result = await process_email("INBOX", 123, "unflag", mock_context)
+
+        assert "Failed" in result
+        mock_client.mark_email.assert_called_once_with(
+            123, "INBOX", "\\Flagged", False
+        )
+
+    @pytest.mark.asyncio
+    async def test_process_email_delete_returns_failure(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that process_email returns failure when delete_email returns False."""
+        mock_client.delete_email.return_value = False
+        process_email = tools["process_email"]
+
+        result = await process_email("INBOX", 123, "delete", mock_context)
+
+        assert "Failed" in result
+        mock_client.delete_email.assert_called_once_with(123, "INBOX")

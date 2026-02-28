@@ -550,23 +550,41 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             if action.lower() == "move":
                 if not target_folder:
                     return "Target folder must be specified for move action"
-                client.move_email(uid, folder, target_folder)
-                result = f"Email moved from {folder} to {target_folder}"
+                success = client.move_email(uid, folder, target_folder)
+                if success:
+                    result = f"Email moved from {folder} to {target_folder}"
+                else:
+                    result = f"Failed to move email from {folder} to {target_folder}"
             elif action.lower() == "read":
-                client.mark_email(uid, folder, r"\Seen", True)
-                result = "Email marked as read"
+                success = client.mark_email(uid, folder, r"\Seen", True)
+                if success:
+                    result = "Email marked as read"
+                else:
+                    result = "Failed to mark email as read"
             elif action.lower() == "unread":
-                client.mark_email(uid, folder, r"\Seen", False)
-                result = "Email marked as unread"
+                success = client.mark_email(uid, folder, r"\Seen", False)
+                if success:
+                    result = "Email marked as unread"
+                else:
+                    result = "Failed to mark email as unread"
             elif action.lower() == "flag":
-                client.mark_email(uid, folder, r"\Flagged", True)
-                result = "Email flagged"
+                success = client.mark_email(uid, folder, r"\Flagged", True)
+                if success:
+                    result = "Email flagged"
+                else:
+                    result = "Failed to flag email"
             elif action.lower() == "unflag":
-                client.mark_email(uid, folder, r"\Flagged", False)
-                result = "Email unflagged"
+                success = client.mark_email(uid, folder, r"\Flagged", False)
+                if success:
+                    result = "Email unflagged"
+                else:
+                    result = "Failed to unflag email"
             elif action.lower() == "delete":
-                client.delete_email(uid, folder)
-                result = "Email deleted"
+                success = client.delete_email(uid, folder)
+                if success:
+                    result = "Email deleted"
+                else:
+                    result = "Failed to delete email"
             else:
                 return f"Invalid action: {action}"
 
