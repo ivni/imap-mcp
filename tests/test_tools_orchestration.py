@@ -167,6 +167,85 @@ class TestMeetingInviteOrchestration:
         mock_imap_client._get_drafts_folder.assert_called_once()
 
     @pytest.mark.asyncio
+    @patch("imap_mcp.smtp_client.create_reply_mime")
+    @patch("imap_mcp.workflows.meeting_reply.generate_meeting_reply_content")
+    @patch("imap_mcp.workflows.calendar_mock.check_mock_availability")
+    @patch("imap_mcp.workflows.invite_parser.identify_meeting_invite_details")
+    @patch("imap_mcp.tools.get_client_from_context")
+    async def test_process_meeting_invite_uses_config_username(
+        self,
+        mock_get_client: Any,
+        mock_identify_invite: Any,
+        mock_check_availability: Any,
+        mock_generate_reply: Any,
+        mock_create_reply_mime: Any,
+        mock_context: Any,
+        mock_imap_client: Any,
+        registered_tools: Any,
+    ) -> None:
+        """Test that process_meeting_invite uses config.username, not the To header."""
+        # The mock_imap_client has config.username = "test@example.com"
+        # but the invite email has to[0] = "different@example.com"
+        invite_email_different_to = Email(
+            message_id="<invite789@example.com>",
+            subject="Meeting Invitation: Team Sync",
+            from_=EmailAddress(name="Organizer", address="organizer@example.com"),
+            to=[EmailAddress(name="Mailing List", address="different@example.com")],
+            date=datetime(2025, 4, 1, 10, 0, 0),
+            content=EmailContent(
+                text="You are invited to a team sync meeting.\nWhen: Tuesday, April 1, 2025 10:00 AM - 11:00 AM"
+            ),
+            headers={"Content-Type": "text/calendar; method=REQUEST"}
+        )
+
+        mock_get_client.return_value = mock_imap_client
+        mock_imap_client.fetch_email.return_value = invite_email_different_to
+
+        mock_identify_invite.return_value = {
+            "is_invite": True,
+            "details": {
+                "subject": "Team Sync",
+                "start_time": datetime(2025, 4, 1, 10, 0, 0),
+                "end_time": datetime(2025, 4, 1, 11, 0, 0),
+                "organizer": "Organizer <organizer@example.com>",
+                "location": "Conference Room"
+            }
+        }
+
+        mock_check_availability.return_value = {
+            "available": True,
+            "reason": "Time slot is available",
+            "alternative_times": []
+        }
+
+        mock_generate_reply.return_value = {
+            "reply_subject": "Accepted: Team Sync",
+            "reply_body": "I'll attend the meeting...",
+            "reply_type": "accept"
+        }
+
+        mock_mime_message = MagicMock(spec=EmailMessage)
+        mock_create_reply_mime.return_value = mock_mime_message
+
+        mock_imap_client.save_draft_mime.return_value = 999
+
+        process_meeting_invite = registered_tools["process_meeting_invite"]
+        result = await process_meeting_invite(
+            folder="INBOX",
+            uid=456,
+            ctx=mock_context,
+            availability_mode="always_available"
+        )
+
+        assert result["status"] == "success"
+        assert result["draft_uid"] == 999
+
+        # Verify create_reply_mime was called with config.username, NOT to[0]
+        call_kwargs = mock_create_reply_mime.call_args[1]
+        assert call_kwargs["reply_to"].address == "test@example.com"
+        assert call_kwargs["reply_to"].address != "different@example.com"
+
+    @pytest.mark.asyncio
     @patch("imap_mcp.workflows.invite_parser.identify_meeting_invite_details")
     @patch("imap_mcp.tools.get_client_from_context")
     async def test_process_non_invite_email(

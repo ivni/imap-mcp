@@ -206,10 +206,7 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             return {"status": "error", "message": f"Email UID {uid} not found in {folder}"}
 
         # Determine sender for the reply
-        if email_obj.to:
-            reply_from = email_obj.to[0]
-        else:
-            reply_from = EmailAddress(name="Me", address=client.config.username)
+        reply_from = EmailAddress(name="", address=client.config.username)
 
         # Parse CC addresses
         if cc:
@@ -696,15 +693,8 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
 
             # Step 5: Create MIME message for reply
             logger.info("Creating MIME message for reply")
-            # Create EmailAddress object for the reply sender (use the original recipient)
-            if email_obj.to and len(email_obj.to) > 0:
-                reply_from = email_obj.to[0]
-            else:
-                # Fallback to a default if no recipient in original email
-                reply_from = EmailAddress(
-                    name="Me",
-                    address=client.config.username
-                )
+            # Create EmailAddress object for the reply sender
+            reply_from = EmailAddress(name="", address=client.config.username)
 
             # Create the reply MIME message - using the standalone function
             mime_message = create_reply_mime(

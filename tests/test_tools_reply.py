@@ -186,6 +186,55 @@ class TestToolsReply:
         imap_client.save_draft_mime.assert_called_once()
 
     @pytest.mark.asyncio
+    @patch("imap_mcp.smtp_client.create_reply_mime")
+    @patch("imap_mcp.tools.get_client_from_context")
+    async def test_draft_reply_uses_config_username_not_to_header(
+        self, mock_get_client: MagicMock, mock_create_reply: MagicMock, registered_tools: tuple[dict[str, Any], MagicMock], mock_context: MagicMock
+    ) -> None:
+        """Test that draft_reply_tool uses config.username, not the To header."""
+        tools_dict, imap_client = registered_tools
+        draft_reply_tool = tools_dict["draft_reply_tool"]
+
+        # Email where to[0] is a mailing list, NOT the user's address
+        mailing_list_email = Email(
+            message_id="<list456@example.com>",
+            subject="List Discussion",
+            from_=EmailAddress(name="Sender", address="sender@example.com"),
+            to=[EmailAddress(name="Dev List", address="list@example.com")],
+            cc=[],
+            date=datetime.now(),
+            content=EmailContent(text="Discussion content", html="<p>Discussion content</p>"),
+            attachments=[],
+            flags=["\\Seen"],
+            headers={},
+            folder="INBOX",
+            uid=1
+        )
+
+        mock_get_client.return_value = imap_client
+        imap_client.fetch_email.return_value = mailing_list_email
+        imap_client.config.username = "me@example.com"
+
+        mime_message = MagicMock()
+        mock_create_reply.return_value = mime_message
+        imap_client.save_draft_mime.return_value = 789
+
+        result = await draft_reply_tool(
+            folder="INBOX",
+            uid=1,
+            reply_body="My reply to the list",
+            ctx=mock_context
+        )
+
+        assert result["status"] == "success"
+        assert result["draft_uid"] == 789
+
+        # Verify create_reply_mime was called with config.username, NOT to[0]
+        call_kwargs = mock_create_reply.call_args[1]
+        assert call_kwargs["reply_to"].address == "me@example.com"
+        assert call_kwargs["reply_to"].address != "list@example.com"
+
+    @pytest.mark.asyncio
     async def test_draft_reply_tool_confirmation_declined(
         self, registered_tools: tuple[dict[str, Any], MagicMock], mock_context: MagicMock
     ) -> None:
