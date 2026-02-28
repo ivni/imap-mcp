@@ -36,7 +36,7 @@ def decode_mime_header(header_value: Optional[str]) -> str:
             if encoding:
                 try:
                     decoded_parts.append(part.decode(encoding))
-                except LookupError:
+                except (LookupError, UnicodeDecodeError):
                     # If the encoding is not recognized, try with utf-8
                     decoded_parts.append(part.decode("utf-8", errors="replace"))
             else:

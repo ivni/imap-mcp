@@ -33,6 +33,25 @@ class TestModels(unittest.TestCase):
         self.assertEqual(decode_mime_header(None), "")
         self.assertEqual(decode_mime_header(""), "")
 
+    def test_decode_mime_header_malformed_base64_us_ascii(self) -> None:
+        """Test that malformed encoded headers don't crash."""
+        # =?us-ascii?B?////?= decodes to bytes b'\xff\xff\xff' which can't decode as us-ascii
+        result = decode_mime_header("=?us-ascii?B?////?=")
+        # Should not raise UnicodeDecodeError, should return replacement chars
+        self.assertIsInstance(result, str)
+        self.assertTrue(len(result) > 0)
+
+    def test_decode_mime_header_unknown_encoding(self) -> None:
+        """Test header with unrecognized encoding falls back to utf-8."""
+        result = decode_mime_header("=?x-unknown?Q?Hello?=")
+        self.assertIsInstance(result, str)
+
+    def test_decode_mime_header_valid_encoded_still_works(self) -> None:
+        """Regression test: valid encoded headers still work after the fix."""
+        encoded = Header("Test Subject", "utf-8").encode()
+        result = decode_mime_header(encoded)
+        self.assertEqual(result, "Test Subject")
+
     def test_email_address_parse(self) -> None:
         """Test email address parsing."""
         # Test name + address
