@@ -175,13 +175,16 @@ def discover_jwks_uri(issuer_url: str) -> str:
     """Discover the JWKS URI from an OIDC issuer's well-known configuration.
 
     Fetches the OpenID Connect discovery document and extracts the
-    jwks_uri field. Falls back to a constructed URL if discovery fails.
+    jwks_uri field. Raises ValueError if discovery fails.
 
     Args:
         issuer_url: The OIDC issuer URL.
 
     Returns:
         The JWKS endpoint URL.
+
+    Raises:
+        ValueError: If discovery fails or the document lacks jwks_uri.
     """
     discovery_url = issuer_url.rstrip("/") + "/.well-known/openid-configuration"
     try:
@@ -191,9 +194,13 @@ def discover_jwks_uri(issuer_url: str) -> str:
             if jwks_uri:
                 return str(jwks_uri)
     except Exception as e:
-        logger.warning("OIDC discovery failed for %s: %s", discovery_url, e)
+        logger.error("OIDC discovery failed for %s: %s", discovery_url, e)
+        raise ValueError(
+            f"OIDC discovery failed for {issuer_url}: {e}. "
+            "Set OIDC_JWKS_URI environment variable explicitly."
+        ) from e
 
-    # Fallback: construct from issuer URL (common OIDC convention)
-    fallback = issuer_url.rstrip("/") + "/jwks/"
-    logger.info("Falling back to constructed JWKS URI: %s", fallback)
-    return fallback
+    raise ValueError(
+        f"OIDC discovery document at {discovery_url} does not contain 'jwks_uri'. "
+        "Set OIDC_JWKS_URI environment variable explicitly."
+    )

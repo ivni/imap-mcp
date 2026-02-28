@@ -308,16 +308,33 @@ class TestDiscoverJWKSUri:
 
         assert result == "https://auth.example.com/application/o/test/jwks/"
 
-    def test_discovery_failure_falls_back(self) -> None:
-        """Test that discovery failure falls back to constructed URL."""
+    def test_discovery_failure_raises_error(self) -> None:
+        """Test that discovery failure raises ValueError."""
         with mock.patch(
             "urllib.request.urlopen", side_effect=Exception("Connection refused")
         ):
-            result = discover_jwks_uri(
-                "https://auth.example.com/application/o/test/"
-            )
+            with pytest.raises(ValueError, match="OIDC discovery failed"):
+                discover_jwks_uri(
+                    "https://auth.example.com/application/o/test/"
+                )
 
-        assert result == "https://auth.example.com/application/o/test/jwks/"
+    def test_discovery_missing_jwks_uri_raises_error(self) -> None:
+        """Test that missing jwks_uri in discovery document raises ValueError."""
+        discovery_response = json.dumps(
+            {"issuer": "https://auth.example.com/application/o/test/"}
+        ).encode()
+
+        with mock.patch("urllib.request.urlopen") as mock_urlopen:
+            mock_response = mock.MagicMock()
+            mock_response.read.return_value = discovery_response
+            mock_response.__enter__ = mock.MagicMock(return_value=mock_response)
+            mock_response.__exit__ = mock.MagicMock(return_value=False)
+            mock_urlopen.return_value = mock_response
+
+            with pytest.raises(ValueError, match="does not contain 'jwks_uri'"):
+                discover_jwks_uri(
+                    "https://auth.example.com/application/o/test/"
+                )
 
     def test_trailing_slash_handling(self) -> None:
         """Test that trailing slash is handled correctly in discovery URL."""

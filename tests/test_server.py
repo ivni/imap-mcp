@@ -544,6 +544,19 @@ class TestServerOIDCAuth:
             with pytest.raises(ValueError, match="OIDC_ISSUER_URL is required"):
                 create_server(transport="streamable-http")
 
+    def test_discovery_failure_propagates_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that discovery failure raises ValueError when no explicit JWKS URI."""
+        monkeypatch.setenv("OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/")
+        monkeypatch.delenv("OIDC_JWKS_URI", raising=False)
+
+        with mock.patch("imap_mcp.server.load_config", return_value=self._mock_config()):
+            with mock.patch(
+                "imap_mcp.auth.discover_jwks_uri",
+                side_effect=ValueError("OIDC discovery failed"),
+            ):
+                with pytest.raises(ValueError, match="OIDC discovery failed"):
+                    create_server(transport="streamable-http")
+
     def test_explicit_jwks_uri_skips_discovery(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that explicit OIDC_JWKS_URI skips OIDC discovery."""
         monkeypatch.setenv("OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/")
