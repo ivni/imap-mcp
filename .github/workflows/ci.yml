@@ -38,5 +38,8 @@ jobs:
       - name: Type check (mypy)
         run: uv run mypy imap_mcp/
 
+      - name: Security scan (bandit)
+        run: uv run bandit -r imap_mcp/ -c pyproject.toml
+
       - name: Run tests
         run: uv run pytest --skip-integration --cov=imap_mcp
