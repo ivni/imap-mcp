@@ -91,5 +91,53 @@ class TestModels(unittest.TestCase):
         self.assertIn("Subject: Test Email", summary)
 
 
+class TestEmailAddressValidation(unittest.TestCase):
+    """Test cases for email address validation in EmailAddress.parse()."""
+
+    def test_parse_valid_email(self) -> None:
+        """Test that a valid plain email address is accepted."""
+        addr = EmailAddress.parse("user@example.com")
+        self.assertEqual(addr.address, "user@example.com")
+        self.assertEqual(addr.name, "")
+
+    def test_parse_valid_email_with_name(self) -> None:
+        """Test that a valid email address with display name is accepted."""
+        addr = EmailAddress.parse("John Doe <john@example.com>")
+        self.assertEqual(addr.name, "John Doe")
+        self.assertEqual(addr.address, "john@example.com")
+
+    def test_parse_rejects_at_only(self) -> None:
+        """Test that a bare '@' is rejected."""
+        with self.assertRaises(ValueError):
+            EmailAddress.parse("@")
+
+    def test_parse_rejects_missing_domain(self) -> None:
+        """Test that an address missing the domain is rejected."""
+        with self.assertRaises(ValueError):
+            EmailAddress.parse("foo@")
+
+    def test_parse_rejects_missing_local(self) -> None:
+        """Test that an address missing the local part is rejected."""
+        with self.assertRaises(ValueError):
+            EmailAddress.parse("@bar.com")
+
+    def test_parse_rejects_no_at_sign(self) -> None:
+        """Test that a string with no '@' sign is rejected."""
+        with self.assertRaises(ValueError):
+            EmailAddress.parse("notanemail")
+
+    def test_from_message_handles_invalid_addresses_gracefully(self) -> None:
+        """Test that Email.from_message() doesn't crash on invalid From address."""
+        msg = MIMEText("Hello", "plain")
+        msg["From"] = "not-a-valid-email"
+        msg["To"] = "user@example.com"
+        msg["Subject"] = "Test"
+        msg["Message-ID"] = "<test@example.com>"
+
+        email_obj = Email.from_message(msg, uid=1, folder="INBOX")
+        # Should not crash; the invalid address is preserved as-is
+        self.assertEqual(email_obj.from_.address, "not-a-valid-email")
+
+
 if __name__ == "__main__":
     unittest.main()

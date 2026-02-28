@@ -212,7 +212,13 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             reply_from = EmailAddress(name="Me", address=client.config.username)
 
         # Parse CC addresses
-        cc_addresses = [EmailAddress.parse(addr) for addr in cc] if cc else None
+        if cc:
+            try:
+                cc_addresses = [EmailAddress.parse(addr) for addr in cc]
+            except ValueError as e:
+                return {"status": "error", "message": f"Invalid CC address: {e}"}
+        else:
+            cc_addresses = None
 
         # Create the reply MIME message
         mime_message = create_reply_mime(

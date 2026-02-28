@@ -10,6 +10,8 @@ from email.header import decode_header
 from email.message import Message
 from typing import Dict, List, Optional
 
+from email_validator import EmailNotValidError, validate_email
+
 
 def decode_mime_header(header_value: Optional[str]) -> str:
     """Decode a MIME header value.
@@ -56,19 +58,33 @@ class EmailAddress:
 
         Returns:
             EmailAddress object
+
+        Raises:
+            ValueError: If the email address format is invalid.
         """
-        # For the special case of just an email address without brackets
-        if '@' in address_str and '<' not in address_str:
-            return cls(name="", address=address_str.strip())
+        name = ""
+        address = address_str.strip()
 
         # Extract name and address with angle brackets
         match = re.match(r'"?([^"<]*)"?\s*<([^>]*)>', address_str.strip())
         if match:
-            name, address = match.groups()
-            return cls(name=name.strip(), address=address.strip())
+            name = match.group(1).strip()
+            address = match.group(2).strip()
+        elif '@' in address_str and '<' not in address_str:
+            address = address_str.strip()
 
-        # Fallback: treat the whole string as an address
-        return cls(name="", address=address_str.strip())
+        # Validate the email address format
+        if '@' in address:
+            try:
+                result = validate_email(address, check_deliverability=False)
+                address = result.normalized
+            except EmailNotValidError as e:
+                raise ValueError(f"Invalid email address '{address}': {e}") from e
+        elif address:
+            # No @ sign — not a valid email
+            raise ValueError(f"Invalid email address: '{address}' (missing @)")
+
+        return cls(name=name, address=address)
 
     def __str__(self) -> str:
         """Return string representation."""
@@ -203,11 +219,38 @@ class Email:
             # Extract all message IDs from References header
             references = [ref.strip() for ref in re.findall(r'<[^>]+>', references_str)]
 
-        # Parse addresses
-        from_ = EmailAddress.parse(from_str)
-        to = [EmailAddress.parse(addr.strip()) for addr in to_str.split(",") if addr.strip()]
-        cc = [EmailAddress.parse(addr.strip()) for addr in cc_str.split(",") if addr.strip()]
-        bcc = [EmailAddress.parse(addr.strip()) for addr in bcc_str.split(",") if addr.strip()]
+        # Parse addresses (gracefully handle invalid addresses from delivered emails)
+        try:
+            from_ = EmailAddress.parse(from_str)
+        except ValueError:
+            from_ = EmailAddress(name="", address=from_str)
+
+        to: List[EmailAddress] = []
+        for addr in to_str.split(","):
+            addr = addr.strip()
+            if addr:
+                try:
+                    to.append(EmailAddress.parse(addr))
+                except ValueError:
+                    to.append(EmailAddress(name="", address=addr))
+
+        cc: List[EmailAddress] = []
+        for addr in cc_str.split(","):
+            addr = addr.strip()
+            if addr:
+                try:
+                    cc.append(EmailAddress.parse(addr))
+                except ValueError:
+                    cc.append(EmailAddress(name="", address=addr))
+
+        bcc: List[EmailAddress] = []
+        for addr in bcc_str.split(","):
+            addr = addr.strip()
+            if addr:
+                try:
+                    bcc.append(EmailAddress.parse(addr))
+                except ValueError:
+                    bcc.append(EmailAddress(name="", address=addr))
 
         # Parse date
         date = None
