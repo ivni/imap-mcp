@@ -588,3 +588,127 @@ class TestRequireConfirmation:
 
         assert result is True
         ctx.elicit.assert_not_called()
+
+
+class TestSearchEmailsFolderEnforcement:
+    """Tests for allowed_folders enforcement in search_emails(folder=None)."""
+
+    @pytest.fixture
+    def mock_email(self) -> Any:
+        """Create a mock email object for search results."""
+        return Email(
+            message_id="<test123@example.com>",
+            subject="Test Email",
+            from_=EmailAddress(name="Sender", address="sender@example.com"),
+            to=[EmailAddress(name="Recipient", address="recipient@example.com")],
+            cc=[],
+            bcc=[],
+            date=datetime.now(),
+            content=EmailContent(text="Test content", html="<p>Test content</p>"),
+            attachments=[],
+            flags=["\\Seen"],
+            headers={},
+            folder="INBOX",
+            uid=1,
+        )
+
+    @pytest.fixture
+    def tools_with_client(self, mock_email: Any) -> Any:
+        """Register tools and return (stored_tools, mock_client) tuple.
+
+        Allows each test to configure the mock client's allowed_folders
+        and list_folders behavior before calling the tool.
+        """
+        client = MagicMock(spec=ImapClient)
+        client.search.return_value = [1]
+        client.fetch_emails.return_value = {1: mock_email}
+
+        mcp = MagicMock(spec=FastMCP)
+        stored_tools: dict[str, Any] = {}
+
+        def mock_tool_decorator(**kwargs: Any) -> Any:
+            def decorator(func: Any) -> Any:
+                stored_tools[func.__name__] = func
+                return func
+            return decorator
+
+        mcp.tool = mock_tool_decorator
+        register_tools(mcp, client)
+        return stored_tools, client
+
+    @pytest.mark.asyncio
+    async def test_search_emails_folder_none_respects_allowed_folders(
+        self, tools_with_client: Any
+    ) -> None:
+        """When folder=None, search_emails uses list_folders() which respects allowed_folders."""
+        stored_tools, client = tools_with_client
+        search_emails = stored_tools["search_emails"]
+
+        # Configure client: allowed_folders restricts to INBOX and Sent
+        client.allowed_folders = {"INBOX", "Sent"}
+        client.list_folders.return_value = ["INBOX", "Sent"]
+
+        ctx = _make_confirmed_context()
+
+        with patch('imap_mcp.tools.get_client_from_context', return_value=client):
+            result = await search_emails("test", ctx, folder=None)
+
+        # list_folders should be called once (to discover folders)
+        client.list_folders.assert_called_once()
+
+        # search should be called exactly for the allowed folders
+        searched_folders = {
+            call.kwargs.get("folder", call.args[1] if len(call.args) > 1 else None)
+            for call in client.search.call_args_list
+        }
+        assert searched_folders == {"INBOX", "Sent"}
+        assert client.search.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_search_emails_rejects_disallowed_folder(
+        self, tools_with_client: Any
+    ) -> None:
+        """When a disallowed folder is explicitly requested, search returns error/empty."""
+        stored_tools, client = tools_with_client
+        search_emails = stored_tools["search_emails"]
+
+        # Configure client: only INBOX is allowed
+        client.allowed_folders = {"INBOX"}
+        client.search.side_effect = ValueError("Folder 'Trash' is not allowed")
+
+        ctx = _make_confirmed_context()
+
+        with patch('imap_mcp.tools.get_client_from_context', return_value=client):
+            result = await search_emails("test", ctx, folder="Trash")
+
+        # The search catches exceptions and continues — result should be empty
+        result_data = json.loads(result)
+        assert result_data == []
+
+    @pytest.mark.asyncio
+    async def test_search_emails_all_folders_when_allowed_empty(
+        self, tools_with_client: Any
+    ) -> None:
+        """When allowed_folders is None (unrestricted), all folders are searched."""
+        stored_tools, client = tools_with_client
+        search_emails = stored_tools["search_emails"]
+
+        # Configure client: no restrictions
+        client.allowed_folders = None
+        client.list_folders.return_value = ["INBOX", "Sent", "Trash", "Drafts"]
+
+        ctx = _make_confirmed_context()
+
+        with patch('imap_mcp.tools.get_client_from_context', return_value=client):
+            result = await search_emails("test", ctx, folder=None)
+
+        # list_folders should be called once
+        client.list_folders.assert_called_once()
+
+        # search should be called for all 4 folders
+        searched_folders = {
+            call.kwargs.get("folder", call.args[1] if len(call.args) > 1 else None)
+            for call in client.search.call_args_list
+        }
+        assert searched_folders == {"INBOX", "Sent", "Trash", "Drafts"}
+        assert client.search.call_count == 4
