@@ -3,6 +3,7 @@
 import email
 import email.utils
 import html
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -11,6 +12,10 @@ from email.message import Message
 from typing import Dict, List, Optional
 
 from email_validator import EmailNotValidError, validate_email
+
+logger = logging.getLogger(__name__)
+
+MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024  # 25 MB
 
 
 def decode_mime_header(header_value: Optional[str]) -> str:
@@ -120,7 +125,20 @@ class EmailAttachment:
             filename = f"attachment.{ext}"
 
         raw_content = part.get_payload(decode=True)
-        content_bytes: Optional[bytes] = raw_content if isinstance(raw_content, bytes) else None
+        content_size = len(raw_content) if isinstance(raw_content, bytes) else 0
+
+        # Skip loading content for oversized attachments
+        if content_size > MAX_ATTACHMENT_SIZE:
+            logger.warning(
+                "Attachment '%s' exceeds size limit (%d bytes > %d bytes), metadata only",
+                part.get_filename() or "unknown",
+                content_size,
+                MAX_ATTACHMENT_SIZE,
+            )
+            content_bytes = None
+        else:
+            content_bytes = raw_content if isinstance(raw_content, bytes) else None
+
         content_type = part.get_content_type()
 
         # Extract Content-ID properly, removing angle brackets if present
@@ -139,7 +157,7 @@ class EmailAttachment:
         return cls(
             filename=decode_mime_header(filename),
             content_type=content_type,
-            size=len(content_bytes) if content_bytes else 0,
+            size=content_size,
             content_id=content_id,
             content=content_bytes,
         )

@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 # Prevents IMAP command injection via crafted folder names.
 _INVALID_FOLDER_CHARS = re.compile(r'[\x00\r\n"\\{}]')
 _MAX_FOLDER_NAME_LENGTH = 255
+MAX_FETCH_UIDS = 500
+MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024  # 25 MB
 
 
 class ImapClient:
@@ -383,6 +385,16 @@ class ImapClient:
         """
         for uid in uids:
             self._validate_uid(uid)
+
+        # Enforce maximum fetch count to prevent DoS
+        if len(uids) > MAX_FETCH_UIDS:
+            logger.warning(
+                "Truncating fetch from %d to %d UIDs (MAX_FETCH_UIDS limit)",
+                len(uids),
+                MAX_FETCH_UIDS,
+            )
+            uids = uids[:MAX_FETCH_UIDS]
+
         self.ensure_connected()
         self.select_folder(folder, readonly=True)
 

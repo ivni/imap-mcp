@@ -3,10 +3,18 @@
 import email
 import unittest
 from email.header import Header
+from email.message import Message
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from unittest.mock import MagicMock, patch
 
-from imap_mcp.models import Email, EmailAddress, decode_mime_header
+from imap_mcp.models import (
+    Email,
+    EmailAddress,
+    EmailAttachment,
+    MAX_ATTACHMENT_SIZE,
+    decode_mime_header,
+)
 
 
 class TestModels(unittest.TestCase):
@@ -137,6 +145,55 @@ class TestEmailAddressValidation(unittest.TestCase):
         email_obj = Email.from_message(msg, uid=1, folder="INBOX")
         # Should not crash; the invalid address is preserved as-is
         self.assertEqual(email_obj.from_.address, "not-a-valid-email")
+
+
+class TestAttachmentSizeLimits(unittest.TestCase):
+    """Test attachment size limits (issue #17)."""
+
+    def _make_email_part(self, payload: bytes, filename: str = "test.bin") -> MagicMock:
+        """Create a mock email part with the given payload.
+
+        Args:
+            payload: Raw bytes payload for the attachment.
+            filename: Filename for the attachment.
+
+        Returns:
+            A mock email Message part.
+        """
+        part = MagicMock(spec=Message)
+        part.get_payload.return_value = payload
+        part.get_filename.return_value = filename
+        part.get_content_type.return_value = "application/octet-stream"
+        part.get.side_effect = lambda key, default="": {
+            "Content-ID": None,
+            "Content-Disposition": "attachment",
+            "Content-Type": "application/octet-stream",
+        }.get(key, default)
+        return part
+
+    def test_attachment_from_part_skips_oversized_content(self) -> None:
+        """Test that oversized attachments have content set to None."""
+        oversized_payload = b"x" * (MAX_ATTACHMENT_SIZE + 1)
+        part = self._make_email_part(oversized_payload, filename="huge.bin")
+
+        attachment = EmailAttachment.from_part(part)
+
+        self.assertIsNone(attachment.content)
+        self.assertEqual(attachment.size, len(oversized_payload))
+        self.assertEqual(attachment.filename, "huge.bin")
+        self.assertEqual(attachment.content_type, "application/octet-stream")
+
+    def test_attachment_from_part_keeps_normal_content(self) -> None:
+        """Test that normal-sized attachments retain their content."""
+        normal_payload = b"Hello, this is a small attachment."
+        part = self._make_email_part(normal_payload, filename="small.txt")
+
+        attachment = EmailAttachment.from_part(part)
+
+        self.assertEqual(attachment.content, normal_payload)
+        self.assertEqual(attachment.size, len(normal_payload))
+        self.assertEqual(attachment.filename, "small.txt")
+        self.assertEqual(attachment.content_type, "application/octet-stream")
 
 
 if __name__ == "__main__":

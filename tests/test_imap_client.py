@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from imap_mcp.config import ImapConfig
-from imap_mcp.imap_client import ImapClient
+from imap_mcp.imap_client import MAX_FETCH_UIDS, ImapClient
 from imap_mcp.models import Email
 
 
@@ -1343,3 +1343,79 @@ class TestImapClient:
 
         with pytest.raises(ValueError, match="positive integer"):
             client.delete_email(0, "INBOX")
+
+
+class TestFetchLimits:
+    """Test fetch size limits (issue #17)."""
+
+    def test_fetch_emails_truncates_large_uid_list(
+        self,
+        mock_imap_client: MagicMock,
+        make_test_email_response_data: Callable[..., Dict[bytes, Any]],
+    ) -> None:
+        """Test that fetch_emails truncates UID lists exceeding MAX_FETCH_UIDS."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+
+            # Build response data for the first MAX_FETCH_UIDS UIDs
+            response_data: Dict[int, Dict[bytes, Any]] = {}
+            for i in range(1, MAX_FETCH_UIDS + 1):
+                response_data[i] = make_test_email_response_data(uid=i)
+            mock_imap_client.fetch.return_value = response_data
+            mock_imap_client.select_folder.return_value = {b"EXISTS": 600}
+
+            client.connect()
+
+            # Create a list of 600 UIDs (exceeds MAX_FETCH_UIDS=500)
+            large_uid_list = list(range(1, 601))
+            emails = client.fetch_emails(large_uid_list, folder="INBOX")
+
+            # Verify the fetch call received at most MAX_FETCH_UIDS UIDs
+            call_args = mock_imap_client.fetch.call_args
+            fetched_uids = call_args[0][0]
+            assert len(fetched_uids) <= MAX_FETCH_UIDS
+            assert fetched_uids == list(range(1, MAX_FETCH_UIDS + 1))
+
+    def test_fetch_emails_allows_small_uid_list(
+        self,
+        mock_imap_client: MagicMock,
+        make_test_email_response_data: Callable[..., Dict[bytes, Any]],
+    ) -> None:
+        """Test that fetch_emails passes through small UID lists without truncation."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+
+            small_uid_list = list(range(1, 11))  # 10 UIDs
+            response_data: Dict[int, Dict[bytes, Any]] = {}
+            for uid in small_uid_list:
+                response_data[uid] = make_test_email_response_data(uid=uid)
+            mock_imap_client.fetch.return_value = response_data
+            mock_imap_client.select_folder.return_value = {b"EXISTS": 10}
+
+            client.connect()
+
+            emails = client.fetch_emails(small_uid_list, folder="INBOX")
+
+            # Verify all 10 UIDs were passed through
+            call_args = mock_imap_client.fetch.call_args
+            fetched_uids = call_args[0][0]
+            assert len(fetched_uids) == 10
+            assert fetched_uids == small_uid_list
