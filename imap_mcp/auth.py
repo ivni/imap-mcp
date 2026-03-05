@@ -227,7 +227,7 @@ def discover_jwks_uri(issuer_url: str) -> str:
     _validate_issuer_url(issuer_url)
     discovery_url = issuer_url.rstrip("/") + "/.well-known/openid-configuration"
     try:
-        with urllib.request.urlopen(discovery_url, timeout=10) as response:
+        with urllib.request.urlopen(discovery_url, timeout=10) as response:  # nosec B310 - scheme validated by _validate_issuer_url (HTTPS only)
             config = json.loads(response.read().decode())
             jwks_uri = config.get("jwks_uri")
             if jwks_uri:

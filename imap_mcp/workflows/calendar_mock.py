@@ -132,7 +132,7 @@ def _check_availability_by_mode(
             return False, "Time slot falls on a weekend"
 
     # Default: random mode (70% chance of being available)
-    if random.random() < 0.7:
+    if random.random() < 0.7:  # nosec B311 - mock module, not security-sensitive
         return True, "Time slot is available"
     else:
         return False, "Calendar is busy during this time"
