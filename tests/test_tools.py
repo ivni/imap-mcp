@@ -11,7 +11,7 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from imap_mcp.imap_client import ImapClient
 from imap_mcp.models import Email, EmailAddress, EmailContent
-from imap_mcp.tools import register_tools, require_confirmation
+from imap_mcp.tools import ConfirmationResult, register_tools, require_confirmation
 
 # --- Shared fixtures ---
 
@@ -493,13 +493,13 @@ class TestConfirmation:
 
     @pytest.mark.asyncio
     async def test_elicitation_not_supported_aborts_delete(self, tools: Any, mock_client: Any, unsupported_context: Any) -> None:
-        """Test that when elicitation raises, delete is aborted for safety."""
+        """Test that when elicitation raises, delete is aborted with error."""
         delete_email = tools["delete_email"]
 
         with patch('imap_mcp.tools.get_client_from_context', return_value=mock_client):
             result = await delete_email("INBOX", 123, unsupported_context)
 
-        assert "cancelled" in result.lower()
+        assert "aborted" in result.lower() or "error" in result.lower()
         mock_client.delete_email.assert_not_called()
 
     @pytest.mark.asyncio
@@ -551,31 +551,58 @@ class TestRequireConfirmation:
         assert "42" in message
 
     @pytest.mark.asyncio
-    async def test_returns_false_on_decline(self) -> None:
-        """Verify require_confirmation returns False on decline."""
+    async def test_returns_declined_on_decline(self) -> None:
+        """Verify require_confirmation returns DECLINED on decline."""
         ctx = MagicMock(spec=Context)
         ctx.elicit = AsyncMock(return_value=_make_elicit_result("decline"))
 
         result = await require_confirmation(ctx, "delete", "INBOX", 1)
-        assert result is False
+        assert result == ConfirmationResult.DECLINED
 
     @pytest.mark.asyncio
-    async def test_returns_true_on_accept_confirmed(self) -> None:
-        """Verify require_confirmation returns True on accept+confirmed."""
+    async def test_returns_declined_on_cancel(self) -> None:
+        """Verify require_confirmation returns DECLINED on cancel."""
+        ctx = MagicMock(spec=Context)
+        ctx.elicit = AsyncMock(return_value=_make_elicit_result("cancel"))
+
+        result = await require_confirmation(ctx, "delete", "INBOX", 1)
+        assert result == ConfirmationResult.DECLINED
+
+    @pytest.mark.asyncio
+    async def test_returns_confirmed_on_accept(self) -> None:
+        """Verify require_confirmation returns CONFIRMED on accept+confirmed."""
         ctx = MagicMock(spec=Context)
         ctx.elicit = AsyncMock(return_value=_make_elicit_result("accept", True))
 
         result = await require_confirmation(ctx, "delete", "INBOX", 1)
-        assert result is True
+        assert result == ConfirmationResult.CONFIRMED
 
     @pytest.mark.asyncio
-    async def test_returns_false_on_exception(self) -> None:
-        """Verify require_confirmation returns False when elicitation raises."""
+    async def test_returns_error_on_generic_exception(self) -> None:
+        """Verify require_confirmation returns ERROR on unexpected exceptions."""
         ctx = MagicMock(spec=Context)
         ctx.elicit = AsyncMock(side_effect=Exception("not supported"))
 
         result = await require_confirmation(ctx, "delete", "INBOX", 1)
-        assert result is False
+        assert result == ConfirmationResult.ERROR
+
+    @pytest.mark.asyncio
+    async def test_returns_error_on_connection_error(self) -> None:
+        """Verify require_confirmation returns ERROR on network errors."""
+        ctx = MagicMock(spec=Context)
+        ctx.elicit = AsyncMock(side_effect=ConnectionError("connection refused"))
+
+        result = await require_confirmation(ctx, "delete", "INBOX", 1)
+        assert result == ConfirmationResult.ERROR
+
+    @pytest.mark.asyncio
+    async def test_returns_error_on_type_error(self) -> None:
+        """Verify require_confirmation returns ERROR on schema validation errors."""
+        ctx = MagicMock(spec=Context)
+        ctx.elicit = AsyncMock(side_effect=TypeError("invalid schema"))
+
+        result = await require_confirmation(ctx, "delete", "INBOX", 1)
+        assert result == ConfirmationResult.ERROR
 
     @pytest.mark.asyncio
     async def test_skip_via_env_var(self) -> None:
@@ -586,7 +613,7 @@ class TestRequireConfirmation:
         with patch.dict(os.environ, {"IMAP_MCP_SKIP_CONFIRMATION": "true"}):
             result = await require_confirmation(ctx, "delete", "INBOX", 1)
 
-        assert result is True
+        assert result == ConfirmationResult.CONFIRMED
         ctx.elicit.assert_not_called()
 
 

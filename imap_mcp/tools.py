@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -30,6 +31,14 @@ def _validate_tool_folder(client: ImapClient, folder: str) -> str | None:
     return None
 
 
+class ConfirmationResult(Enum):
+    """Result of a confirmation elicitation request."""
+
+    CONFIRMED = "confirmed"
+    DECLINED = "declined"
+    ERROR = "error"
+
+
 class ConfirmAction(BaseModel):
     """Schema for destructive action confirmation elicitation.
 
@@ -48,7 +57,7 @@ async def require_confirmation(
     uid: int,
     *,
     target_folder: str | None = None,
-) -> bool:
+) -> ConfirmationResult:
     """Request user confirmation before a destructive action.
 
     Uses MCP elicitation to present a confirmation dialog to the user.
@@ -63,14 +72,16 @@ async def require_confirmation(
         target_folder: Target folder for move operations
 
     Returns:
-        True if the user confirmed the action, False otherwise.
+        ConfirmationResult.CONFIRMED if the user confirmed,
+        ConfirmationResult.DECLINED if the user declined/cancelled,
+        ConfirmationResult.ERROR if elicitation failed due to a system error.
     """
     if os.environ.get("IMAP_MCP_SKIP_CONFIRMATION", "").lower() == "true":
         logger.warning(
             "Confirmation skipped for %s (IMAP_MCP_SKIP_CONFIRMATION=true)",
             action,
         )
-        return True
+        return ConfirmationResult.CONFIRMED
 
     message = f"Confirm {action}: email UID {uid} in folder '{folder}'"
     if target_folder:
@@ -82,19 +93,37 @@ async def require_confirmation(
             message=message,
             schema=ConfirmAction,
         )
+    except (TypeError, ValueError) as e:
+        logger.error(
+            "Elicitation schema/validation error for %s: %s",
+            action,
+            e,
+            exc_info=True,
+        )
+        return ConfirmationResult.ERROR
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.error(
+            "Elicitation network error for %s: %s",
+            action,
+            e,
+            exc_info=True,
+        )
+        return ConfirmationResult.ERROR
     except Exception:
-        logger.warning(
+        logger.error(
             "Elicitation failed for %s, aborting for safety",
             action,
             exc_info=True,
         )
-        return False
+        return ConfirmationResult.ERROR
 
     if result.action == "accept" and result.data is not None:
-        return result.data.confirmed
+        if result.data.confirmed:
+            return ConfirmationResult.CONFIRMED
+        return ConfirmationResult.DECLINED
 
-    return False
-
+    logger.info("User %s %s for UID %d in '%s'", result.action, action, uid, folder)
+    return ConfirmationResult.DECLINED
 
 
 def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
@@ -192,7 +221,10 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         Returns:
             Dictionary with status and the UID of the created draft
         """
-        if not await require_confirmation(ctx, "save draft reply", folder, uid):
+        confirmation = await require_confirmation(ctx, "save draft reply", folder, uid)
+        if confirmation != ConfirmationResult.CONFIRMED:
+            if confirmation == ConfirmationResult.ERROR:
+                return {"status": "error", "message": "Confirmation system error for save draft reply"}
             return {"status": "cancelled", "message": "Draft reply not confirmed by user"}
 
         from imap_mcp.smtp_client import create_reply_mime
@@ -254,7 +286,10 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         Returns:
             Success message or error message
         """
-        if not await require_confirmation(ctx, "move", folder, uid, target_folder=target_folder):
+        confirmation = await require_confirmation(ctx, "move", folder, uid, target_folder=target_folder)
+        if confirmation != ConfirmationResult.CONFIRMED:
+            if confirmation == ConfirmationResult.ERROR:
+                return "Action aborted: confirmation system error for move"
             return "Action cancelled: move not confirmed by user"
 
         client = get_client_from_context(ctx)
@@ -386,7 +421,10 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         Returns:
             Success message or error message
         """
-        if not await require_confirmation(ctx, "delete", folder, uid):
+        confirmation = await require_confirmation(ctx, "delete", folder, uid)
+        if confirmation != ConfirmationResult.CONFIRMED:
+            if confirmation == ConfirmationResult.ERROR:
+                return "Action aborted: confirmation system error for delete"
             return "Action cancelled: delete not confirmed by user"
 
         client = get_client_from_context(ctx)
@@ -521,10 +559,13 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         # Require confirmation for destructive actions
         destructive_actions = {"delete", "move"}
         if action.lower() in destructive_actions:
-            if not await require_confirmation(
+            confirmation = await require_confirmation(
                 ctx, action.lower(), folder, uid,
                 target_folder=target_folder if action.lower() == "move" else None,
-            ):
+            )
+            if confirmation != ConfirmationResult.CONFIRMED:
+                if confirmation == ConfirmationResult.ERROR:
+                    return f"Action aborted: confirmation system error for {action}"
                 return f"Action cancelled: {action} not confirmed by user"
 
         client = get_client_from_context(ctx)
@@ -625,10 +666,17 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
               - draft_folder: Folder where the draft was saved (if successful)
               - availability: Whether the time slot was available
         """
-        if not await require_confirmation(ctx, "process meeting invite and save draft", folder, uid):
+        confirmation = await require_confirmation(ctx, "process meeting invite and save draft", folder, uid)
+        if confirmation != ConfirmationResult.CONFIRMED:
+            if confirmation == ConfirmationResult.ERROR:
+                status = "error"
+                msg = "Confirmation system error for meeting invite processing"
+            else:
+                status = "cancelled"
+                msg = "Meeting invite processing not confirmed by user"
             return {
-                "status": "cancelled",
-                "message": "Meeting invite processing not confirmed by user",
+                "status": status,
+                "message": msg,
                 "draft_uid": None,
                 "draft_folder": None,
                 "availability": None,
