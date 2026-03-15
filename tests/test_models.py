@@ -4,6 +4,7 @@ import email
 import unittest
 from email.header import Header
 from email.message import Message
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from unittest.mock import MagicMock
@@ -13,6 +14,7 @@ from imap_mcp.models import (
     Email,
     EmailAddress,
     EmailAttachment,
+    EmailContent,
     decode_mime_header,
 )
 
@@ -295,6 +297,200 @@ class TestFromMessageAddressParsing(unittest.TestCase):
         email_obj = Email.from_message(msg, uid=1, folder="INBOX")
 
         self.assertEqual(email_obj.to, [])
+
+
+class TestEmailContentGetBestContent(unittest.TestCase):
+    """Test cases for EmailContent.get_best_content()."""
+
+    def test_get_best_content_returns_text_when_available(self) -> None:
+        """Test that text is preferred over HTML when both exist."""
+        content = EmailContent(text="Hello world", html="<p>Hello world</p>")
+        self.assertEqual(content.get_best_content(), "Hello world")
+
+    def test_get_best_content_strips_html_when_text_absent(self) -> None:
+        """Test HTML tag stripping and entity unescaping when only HTML exists."""
+        content = EmailContent(
+            text=None, html="<p>Hello &amp; <b>world</b></p>"
+        )
+        self.assertEqual(content.get_best_content(), "Hello & world")
+
+    def test_get_best_content_empty_text_falls_through_to_html(self) -> None:
+        """Test that empty-string text falls through to HTML."""
+        content = EmailContent(text="", html="<p>Fallback</p>")
+        self.assertEqual(content.get_best_content(), "Fallback")
+
+    def test_get_best_content_returns_empty_when_both_none(self) -> None:
+        """Test empty string returned when no content exists."""
+        content = EmailContent()
+        self.assertEqual(content.get_best_content(), "")
+
+
+class TestEmailSummaryThreading(unittest.TestCase):
+    """Test cases for Email.summary() thread info branches."""
+
+    def _make_email(self, **kwargs: object) -> Email:
+        """Create a minimal Email with overridable fields."""
+        defaults: dict[str, object] = {
+            "message_id": "<test@example.com>",
+            "subject": "Test",
+            "from_": EmailAddress(name="Sender", address="sender@example.com"),
+            "to": [EmailAddress(name="Recipient", address="rcpt@example.com")],
+        }
+        defaults.update(kwargs)
+        return Email(**defaults)  # type: ignore[arg-type]
+
+    def test_summary_unknown_date(self) -> None:
+        """Test that None date shows 'Unknown date'."""
+        em = self._make_email(date=None)
+        self.assertIn("Date: Unknown date", em.summary())
+
+    def test_summary_with_in_reply_to(self) -> None:
+        """Test thread info when in_reply_to is set."""
+        em = self._make_email(in_reply_to="<parent@example.com>")
+        summary = em.summary()
+        self.assertIn("Thread: Reply to <parent@example.com>", summary)
+
+    def test_summary_with_references_only(self) -> None:
+        """Test thread info when only references are set (no in_reply_to)."""
+        em = self._make_email(
+            in_reply_to="",
+            references=["<r1@ex.com>", "<r2@ex.com>", "<r3@ex.com>"],
+        )
+        summary = em.summary()
+        self.assertIn("Thread: References 3 previous messages", summary)
+        self.assertNotIn("Reply to", summary)
+
+
+class TestEmailAttachmentEdgeCases(unittest.TestCase):
+    """Test cases for EmailAttachment.from_part() edge cases."""
+
+    def _make_part(
+        self,
+        filename: str | None = "test.bin",
+        content_type: str = "application/octet-stream",
+        payload: bytes = b"data",
+        content_id: str | None = None,
+        content_disposition: str = "attachment",
+    ) -> MagicMock:
+        """Create a mock email part."""
+        part = MagicMock(spec=Message)
+        part.get_payload.return_value = payload
+        part.get_filename.return_value = filename
+        part.get_content_type.return_value = content_type
+        part.get.side_effect = lambda key, default="": {
+            "Content-ID": content_id,
+            "Content-Disposition": content_disposition,
+            "Content-Type": content_type,
+        }.get(key, default)
+        return part
+
+    def test_from_part_generates_filename_when_missing(self) -> None:
+        """Test that missing filename generates 'attachment.{ext}'."""
+        part = self._make_part(filename=None, content_type="image/png")
+        attachment = EmailAttachment.from_part(part)
+        self.assertEqual(attachment.filename, "attachment.png")
+
+    def test_from_part_strips_content_id_angle_brackets(self) -> None:
+        """Test that angle brackets are stripped from Content-ID."""
+        part = self._make_part(content_id="<cid123@example.com>")
+        attachment = EmailAttachment.from_part(part)
+        self.assertEqual(attachment.content_id, "cid123@example.com")
+
+    def test_from_part_inline_uses_filename_as_content_id(self) -> None:
+        """Test that inline attachment without Content-ID uses filename."""
+        part = self._make_part(
+            filename="logo.png",
+            content_disposition="inline",
+            content_id=None,
+        )
+        attachment = EmailAttachment.from_part(part)
+        self.assertEqual(attachment.content_id, "logo.png")
+
+
+class TestEmailFromMessageEdgeCases(unittest.TestCase):
+    """Test cases for Email.from_message() edge cases."""
+
+    def _make_msg(self, body: str = "Hello", subtype: str = "plain") -> MIMEText:
+        """Create a minimal MIMEText message with standard headers."""
+        msg = MIMEText(body, subtype)
+        msg["From"] = "sender@example.com"
+        msg["To"] = "rcpt@example.com"
+        msg["Subject"] = "Test"
+        msg["Message-ID"] = "<test@example.com>"
+        return msg
+
+    def test_from_message_extracts_in_reply_to(self) -> None:
+        """Test In-Reply-To header extraction."""
+        msg = self._make_msg()
+        msg["In-Reply-To"] = "<parent-msg@example.com>"
+        em = Email.from_message(msg, uid=1, folder="INBOX")
+        self.assertEqual(em.in_reply_to, "<parent-msg@example.com>")
+
+    def test_from_message_extracts_references(self) -> None:
+        """Test References header extraction with multiple IDs."""
+        msg = self._make_msg()
+        msg["References"] = "<msg1@example.com> <msg2@example.com> <msg3@example.com>"
+        em = Email.from_message(msg, uid=1, folder="INBOX")
+        self.assertEqual(
+            em.references,
+            ["<msg1@example.com>", "<msg2@example.com>", "<msg3@example.com>"],
+        )
+
+    def test_from_message_invalid_date_remains_none(self) -> None:
+        """Test that an unparseable Date header results in date=None."""
+        msg = self._make_msg()
+        msg["Date"] = "not-a-real-date"
+        em = Email.from_message(msg, uid=1, folder="INBOX")
+        self.assertIsNone(em.date)
+
+    def test_from_message_single_part_html(self) -> None:
+        """Test single-part HTML email populates content.html."""
+        msg = self._make_msg(body="<p>Hello HTML</p>", subtype="html")
+        em = Email.from_message(msg, uid=1, folder="INBOX")
+        self.assertEqual(em.content.html, "<p>Hello HTML</p>")
+        self.assertIsNone(em.content.text)
+
+
+class TestEmailFromMessageStructure(unittest.TestCase):
+    """Test cases for Email.from_message() with complex message structures."""
+
+    def test_from_message_single_part_non_text_as_attachment(self) -> None:
+        """Test single-part non-text message is treated as attachment."""
+        msg = MIMEApplication(b"PDF content", _subtype="pdf")
+        msg["From"] = "sender@example.com"
+        msg["To"] = "rcpt@example.com"
+        msg["Subject"] = "Test"
+        msg["Message-ID"] = "<test@example.com>"
+
+        em = Email.from_message(msg, uid=1, folder="INBOX")
+        self.assertEqual(len(em.attachments), 1)
+        self.assertIsNone(em.content.text)
+        self.assertIsNone(em.content.html)
+
+    def test_from_message_nested_multipart(self) -> None:
+        """Test multipart/mixed with nested multipart/alternative + attachment."""
+        outer = MIMEMultipart("mixed")
+        outer["From"] = "sender@example.com"
+        outer["To"] = "rcpt@example.com"
+        outer["Subject"] = "Test"
+        outer["Message-ID"] = "<test@example.com>"
+
+        # Nested alternative with text + HTML
+        inner = MIMEMultipart("alternative")
+        inner.attach(MIMEText("Plain text", "plain"))
+        inner.attach(MIMEText("<p>HTML text</p>", "html"))
+        outer.attach(inner)
+
+        # Attachment
+        att = MIMEApplication(b"file data", _subtype="pdf")
+        att.add_header("Content-Disposition", "attachment", filename="doc.pdf")
+        outer.attach(att)
+
+        em = Email.from_message(outer, uid=1, folder="INBOX")
+        self.assertEqual(em.content.text, "Plain text")
+        self.assertEqual(em.content.html, "<p>HTML text</p>")
+        self.assertEqual(len(em.attachments), 1)
+        self.assertEqual(em.attachments[0].filename, "doc.pdf")
 
 
 if __name__ == "__main__":
