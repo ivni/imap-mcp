@@ -93,7 +93,8 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 ## Testing
 
 - Unit tests mock imapclient; fixtures in `tests/conftest.py`
-- Integration tests require env vars: `TEST_IMAP_HOST`, `TEST_SMTP_HOST`, `TEST_EMAIL`, `TEST_PASSWORD`
+- No integration tests currently exist; infrastructure (`@pytest.mark.integration`, `--skip-integration`) is retained
+- Future integration tests should use env vars: `TEST_IMAP_HOST`, `TEST_SMTP_HOST`, `TEST_EMAIL`, `TEST_PASSWORD`
 - Mark integration tests with `@pytest.mark.integration`; skip with `--skip-integration`
 - Run `uv run pytest --cov=imap_mcp` before every PR
 

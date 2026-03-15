@@ -2,6 +2,8 @@
 
 import argparse
 import logging
+import subprocess
+import sys
 from contextlib import AsyncExitStack
 from typing import Any
 from unittest import mock
@@ -508,6 +510,34 @@ class TestServer:
                         mock_logger.warning.assert_called_once()
                         warning_msg = mock_logger.warning.call_args[0][0]
                         assert "SMTP verification failed" in warning_msg
+
+
+class TestServerCLI:
+    """Subprocess smoke tests for the real CLI entrypoint."""
+
+    def test_cli_help(self) -> None:
+        """Verify --help exits 0 and shows expected options."""
+        result = subprocess.run(
+            [sys.executable, "-m", "imap_mcp.server", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0
+        assert "IMAP MCP Server" in result.stdout
+        assert "--config" in result.stdout
+        assert "--transport" in result.stdout
+
+    def test_cli_version(self) -> None:
+        """Verify --version exits 0 and prints version string."""
+        result = subprocess.run(
+            [sys.executable, "-m", "imap_mcp.server", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0
+        assert "version" in result.stdout.lower()
 
 
 class TestServerOIDCAuth:
