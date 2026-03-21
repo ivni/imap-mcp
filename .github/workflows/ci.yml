@@ -42,4 +42,4 @@ jobs:
         run: uv run bandit -r imap_mcp/ -c pyproject.toml
 
       - name: Run tests
-        run: uv run pytest --skip-integration --cov=imap_mcp
+        run: uv run pytest --skip-integration --cov=imap_mcp --cov-fail-under=80
