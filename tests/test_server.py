@@ -39,7 +39,7 @@ class TestServer:
             # Verify server properties
             assert isinstance(server, FastMCP)
             assert server.name == "IMAP"
-            assert server._config == mock_config
+            assert server._config == mock_config  # type: ignore[attr-defined]
 
             # With FastMCP we can't directly check if tools are registered
             # Instead, we can verify that the returned server object is properly configured
@@ -259,11 +259,11 @@ class TestServer:
                     assert server is not None
         finally:
             # Restore the original method
-            FastMCP.tool = original_tool
+            FastMCP.tool = original_tool  # type: ignore[method-assign]
 
         # Since we can't directly test the server_status tool, we'll create a simplified
         # version based on the implementation and test that
-        def test_server_status() -> None:
+        def test_server_status() -> str:
             status = {
                 "server": "IMAP MCP",
                 "imap_host": mock_config.imap.host,

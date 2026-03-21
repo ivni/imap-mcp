@@ -42,9 +42,9 @@ class TestMeetingInviteOrchestration:
         client = ImapClient(config)
 
         # Mock necessary methods
-        client.fetch_email = MagicMock()
-        client.save_draft_mime = MagicMock()
-        client._get_drafts_folder = MagicMock(return_value="Drafts")
+        client.fetch_email = MagicMock()  # type: ignore[method-assign]
+        client.save_draft_mime = MagicMock()  # type: ignore[method-assign]
+        client._get_drafts_folder = MagicMock(return_value="Drafts")  # type: ignore[method-assign]
 
         return client
 

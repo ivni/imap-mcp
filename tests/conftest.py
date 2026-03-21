@@ -17,7 +17,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 try:
-    from imapclient.response_types import Address, BodyData, Envelope
+    from imapclient.response_types import (  # type: ignore[import-untyped]
+        Address,
+        BodyData,
+        Envelope,
+    )
 except ImportError:
     # Mock these classes if not available
     class Address:  # type: ignore[no-redef]
@@ -34,7 +38,7 @@ try:
     from dotenv import load_dotenv
 except ImportError:
 
-    def load_dotenv(x: object = None) -> Any:
+    def load_dotenv(x: object = None) -> Any:  # type: ignore[misc]
         return None
 
 
@@ -169,7 +173,7 @@ def test_email_message_encoded_headers() -> MIMEMultipart:
 
 
 @pytest.fixture
-def make_test_email_message() -> Callable[..., MIMEMultipart]:
+def make_test_email_message() -> Callable[..., MIMEMultipart | MIMEText]:
     """Factory fixture to create customized test email messages."""
 
     def _make_test_email_message(
@@ -187,7 +191,7 @@ def make_test_email_message() -> Callable[..., MIMEMultipart]:
         date: Optional[datetime.datetime] = None,
         message_id: Optional[str] = None,
         headers: Dict[str, str] = {},
-    ) -> MIMEMultipart:
+    ) -> MIMEMultipart | MIMEText:
         """Create a customized email message for testing.
 
         Args:

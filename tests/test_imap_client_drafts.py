@@ -31,7 +31,7 @@ class TestDraftsFunctionality:
         client.connected = True
 
         # Mock list_folders method
-        client.list_folders = MagicMock()
+        client.list_folders = MagicMock()  # type: ignore[method-assign]
 
         return client
 

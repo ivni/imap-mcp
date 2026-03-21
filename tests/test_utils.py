@@ -130,7 +130,7 @@ def generate_test_emails(
             content=EmailContent(text=content_text, html=content_html),
             folder=folder,
             uid=10000 + i,
-            flags=[b"\\Seen"] if random.random() > 0.3 else [],
+            flags=[b"\\Seen"] if random.random() > 0.3 else [],  # type: ignore[list-item]
         )
 
         # Add attachments if requested - ensures at least one email has attachments
@@ -179,9 +179,9 @@ def parse_message_to_dict(message: Message) -> Dict:
     if message.is_multipart():
         result["parts"] = []
         for part in message.get_payload():
-            result["parts"].append(parse_message_to_dict(part))
+            result["parts"].append(parse_message_to_dict(part))  # type: ignore[attr-defined, arg-type]
     else:
-        result["body"] = message.get_payload(decode=True).decode(
+        result["body"] = message.get_payload(decode=True).decode(  # type: ignore[union-attr]
             message.get_content_charset() or "utf-8", errors="replace"
         )
 

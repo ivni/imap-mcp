@@ -51,9 +51,9 @@ class TestCreateReplyMime:
 
         # Check content - handle both multipart and non-multipart payloads
         if mime_message.is_multipart():
-            payload = mime_message.get_payload(0).get_payload(decode=True).decode()
+            payload = mime_message.get_payload(0).get_payload(decode=True).decode()  # type: ignore[union-attr]
         else:
-            payload = mime_message.get_payload(decode=True).decode()
+            payload = mime_message.get_payload(decode=True).decode()  # type: ignore[union-attr]
 
         assert "This is a reply." in payload
         assert "Original message content" in payload
@@ -150,11 +150,11 @@ class TestCreateReplyMime:
         # Should be multipart with at least 2 parts
         assert mime_message.is_multipart()
         alternative = mime_message.get_payload(0)
-        assert alternative.is_multipart()
+        assert alternative.is_multipart()  # type: ignore[union-attr]
 
         # Check HTML part
-        html_part = alternative.get_payload(1)
-        html_text = html_part.get_payload(decode=True).decode()
+        html_part = alternative.get_payload(1)  # type: ignore[union-attr]
+        html_text = html_part.get_payload(decode=True).decode()  # type: ignore[union-attr]
         assert "<p>This is an <b>HTML</b> reply.</p>" in html_text
 
     def test_quoting_original_content(self, sample_email: Email) -> None:
@@ -168,9 +168,9 @@ class TestCreateReplyMime:
 
         # Check content
         if mime_message.is_multipart():
-            payload = mime_message.get_payload(0).get_payload(decode=True).decode()
+            payload = mime_message.get_payload(0).get_payload(decode=True).decode()  # type: ignore[union-attr]
         else:
-            payload = mime_message.get_payload(decode=True).decode()
+            payload = mime_message.get_payload(decode=True).decode()  # type: ignore[union-attr]
 
         # Should have quoting prefix (>) and original content
         assert "This is a reply with original content quoted." in payload
@@ -205,8 +205,8 @@ class TestCreateReplyMime:
 
         # Extract the HTML part (second payload inside the alternative part)
         alternative = mime_message.get_payload(0)
-        html_part = alternative.get_payload(1)
-        html_text = html_part.get_payload(decode=True).decode()
+        html_part = alternative.get_payload(1)  # type: ignore[union-attr]
+        html_text = html_part.get_payload(decode=True).decode()  # type: ignore[union-attr]
 
         # All five HTML entities must be escaped
         assert "&amp;" in html_text
@@ -262,9 +262,9 @@ class TestCreateReplyMime:
 
         # Extract the text payload
         if mime_message.is_multipart():
-            payload = mime_message.get_payload(0).get_payload(decode=True).decode()
+            payload = mime_message.get_payload(0).get_payload(decode=True).decode()  # type: ignore[union-attr]
         else:
-            payload = mime_message.get_payload(decode=True).decode()
+            payload = mime_message.get_payload(decode=True).decode()  # type: ignore[union-attr]
 
         # The boundary-like strings must appear as literal body content
         assert "--boundary123" in payload
@@ -294,11 +294,11 @@ class TestCreateReplyMime:
         # Should be multipart with alternative containing text + html
         assert mime_message.is_multipart()
         alternative = mime_message.get_payload(0)
-        assert alternative.is_multipart()
+        assert alternative.is_multipart()  # type: ignore[union-attr]
 
         # Extract the HTML part
-        html_part = alternative.get_payload(1)
-        html_text = html_part.get_payload(decode=True).decode()
+        html_part = alternative.get_payload(1)  # type: ignore[union-attr]
+        html_text = html_part.get_payload(decode=True).decode()  # type: ignore[union-attr]
 
         # The reply HTML body is author-composed content, so the script tag
         # should be present as-is in the HTML part (it's the sender's own content).
