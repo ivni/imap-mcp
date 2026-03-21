@@ -29,23 +29,6 @@ def get_client_from_context(ctx: Context) -> ImapClient:
     return client  # type: ignore[no-any-return]
 
 
-def get_smtp_client_from_context(ctx: Context) -> Any:
-    """Get SMTP client from context.
-
-    Args:
-        ctx: MCP context
-
-    Returns:
-        SMTP client
-
-    Raises:
-        RuntimeError: If SMTP client is not available
-    """
-    client = ctx.request_context.lifespan_context.get("smtp_client")
-    if not client:
-        raise RuntimeError("SMTP client not available")
-    return client
-
 
 def register_resources(mcp: FastMCP, imap_client: ImapClient) -> None:
     """Register MCP resources.
