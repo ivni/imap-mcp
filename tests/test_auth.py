@@ -342,7 +342,7 @@ class TestDiscoverJWKSUri:
     def test_discovery_failure_raises_error(self) -> None:
         """Test that discovery failure raises ValueError."""
         with mock.patch(
-            "urllib.request.urlopen", side_effect=Exception("Connection refused")
+            "urllib.request.urlopen", side_effect=OSError("Connection refused")
         ):
             with pytest.raises(ValueError, match="OIDC discovery failed"):
                 discover_jwks_uri("https://auth.example.com/application/o/test/")

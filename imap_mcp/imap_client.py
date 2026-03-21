@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import imapclient  # type: ignore[import-untyped]
+from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 
 from imap_mcp.config import ImapConfig, create_ssl_context
 from imap_mcp.models import Email
@@ -69,7 +70,7 @@ class ImapClient:
 
             self.connected = True
             logger.info("Connected to IMAP server %s", self.config.host)
-        except Exception as e:
+        except (IMAPClientError, OSError) as e:
             self.connected = False
             logger.error("Failed to connect to IMAP server: %s", e)
             raise ConnectionError(f"Failed to connect to IMAP server: {e}")
@@ -88,7 +89,7 @@ class ImapClient:
             logger.info("IMAP connection verified (%d capabilities)", len(capabilities))
             logger.debug("IMAP capabilities: %s", capabilities)
             return capabilities
-        except Exception as e:
+        except (IMAPClientError, OSError) as e:
             self.connected = False
             raise ConnectionError(f"IMAP connection verification failed: {e}")
 
@@ -98,7 +99,7 @@ class ImapClient:
             try:
                 self.client.logout()
             except Exception as e:
-                logger.warning(f"Error during IMAP logout: {e}")
+                logger.warning("Error during IMAP logout: %s", e, exc_info=True)
             finally:
                 self.client = None
                 self.connected = False
@@ -263,7 +264,7 @@ class ImapClient:
             self.current_folder = folder
             logger.debug(f"Selected folder '{folder}'")
             return result
-        except imapclient.IMAPClient.Error as e:
+        except IMAPClientError as e:
             logger.error(f"Error selecting folder {folder}: {e}")
             raise ConnectionError(f"Failed to select folder {folder}: {e}")
 
@@ -481,7 +482,7 @@ class ImapClient:
             try:
                 references_results = self.search(references_query, folder)
                 thread_uids.update(references_results)
-            except Exception as e:
+            except (IMAPClientError, OSError) as e:
                 logger.warning(f"Error searching for References: {e}")
 
             # Look for direct replies to this message
@@ -489,7 +490,7 @@ class ImapClient:
             try:
                 inreplyto_results = self.search(inreplyto_query, folder)
                 thread_uids.update(inreplyto_results)
-            except Exception as e:
+            except (IMAPClientError, OSError) as e:
                 logger.warning(f"Error searching for In-Reply-To: {e}")
 
             # If the initial email has References or In-Reply-To, fetch those messages too
@@ -503,7 +504,7 @@ class ImapClient:
                     try:
                         results = self.search(query, folder)
                         thread_uids.update(results)
-                    except Exception as e:
+                    except (IMAPClientError, OSError) as e:
                         logger.warning(
                             f"Error searching for Referenced message {ref_id}: {e}"
                         )
@@ -514,7 +515,7 @@ class ImapClient:
                 try:
                     results = self.search(query, folder)
                     thread_uids.update(results)
-                except Exception as e:
+                except (IMAPClientError, OSError) as e:
                     logger.warning(f"Error searching for In-Reply-To message: {e}")
 
         # If we still have only the initial email or a small thread, try subject-based matching
@@ -550,7 +551,7 @@ class ImapClient:
                             strict_matches.append(candidate_uid)
 
                     thread_uids.update(strict_matches)
-            except Exception as e:
+            except (IMAPClientError, OSError) as e:
                 logger.warning(f"Error searching by subject: {e}")
 
         # Fetch all discovered thread emails
@@ -598,7 +599,7 @@ class ImapClient:
                 self.client.remove_flags([uid], flag)
                 logger.debug(f"Removed flag {flag} from message {uid}")
             return True
-        except Exception as e:
+        except (IMAPClientError, OSError) as e:
             logger.error(f"Failed to mark email: {e}")
             return False
 
@@ -641,7 +642,7 @@ class ImapClient:
             self.client.expunge()
             logger.debug(f"Moved message {uid} from {source_folder} to {target_folder}")
             return True
-        except Exception as e:
+        except (IMAPClientError, OSError) as e:
             logger.error(f"Failed to move email: {e}")
             return False
 
@@ -669,7 +670,7 @@ class ImapClient:
             self.client.expunge()
             logger.debug(f"Deleted message {uid} from {folder}")
             return True
-        except Exception as e:
+        except (IMAPClientError, OSError) as e:
             logger.error(f"Failed to delete email: {e}")
             return False
 
@@ -753,6 +754,6 @@ class ImapClient:
 
             return uid
 
-        except Exception as e:
+        except (IMAPClientError, OSError) as e:
             logger.error(f"Failed to save draft: {e}")
             return None

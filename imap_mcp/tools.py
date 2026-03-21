@@ -6,6 +6,7 @@ import os
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
@@ -319,9 +320,12 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                 return f"Email moved from {folder} to {target_folder}"
             else:
                 return "Failed to move email"
-        except Exception as e:
+        except (IMAPClientError, OSError, ValueError) as e:
             logger.error(f"Error moving email: {e}")
             return f"Error: {e}"
+        except Exception:
+            logger.error("Unexpected error moving email", exc_info=True)
+            return "Error: an unexpected error occurred"
 
     # Mark email as read
     @mcp.tool()
@@ -351,9 +355,12 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                 return "Email marked as read"
             else:
                 return "Failed to mark email as read"
-        except Exception as e:
+        except (IMAPClientError, OSError, ValueError) as e:
             logger.error(f"Error marking email as read: {e}")
             return f"Error: {e}"
+        except Exception:
+            logger.error("Unexpected error marking email as read", exc_info=True)
+            return "Error: an unexpected error occurred"
 
     # Mark email as unread
     @mcp.tool()
@@ -383,9 +390,12 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                 return "Email marked as unread"
             else:
                 return "Failed to mark email as unread"
-        except Exception as e:
+        except (IMAPClientError, OSError, ValueError) as e:
             logger.error(f"Error marking email as unread: {e}")
             return f"Error: {e}"
+        except Exception:
+            logger.error("Unexpected error marking email as unread", exc_info=True)
+            return "Error: an unexpected error occurred"
 
     # Flag email (important/starred)
     @mcp.tool()
@@ -417,9 +427,12 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                 return f"Email {'flagged' if flag else 'unflagged'}"
             else:
                 return f"Failed to {'flag' if flag else 'unflag'} email"
-        except Exception as e:
+        except (IMAPClientError, OSError, ValueError) as e:
             logger.error(f"Error flagging email: {e}")
             return f"Error: {e}"
+        except Exception:
+            logger.error("Unexpected error flagging email", exc_info=True)
+            return "Error: an unexpected error occurred"
 
     # Delete email
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
@@ -457,9 +470,12 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                 return "Email deleted"
             else:
                 return "Failed to delete email"
-        except Exception as e:
+        except (IMAPClientError, OSError, ValueError) as e:
             logger.error(f"Error deleting email: {e}")
             return f"Error: {e}"
+        except Exception:
+            logger.error("Unexpected error deleting email", exc_info=True)
+            return "Error: an unexpected error occurred"
 
     # Search for emails
     @mcp.tool()
@@ -538,8 +554,14 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                                 "has_attachments": len(email_obj.attachments) > 0,
                             }
                         )
-            except Exception as e:
+            except (IMAPClientError, OSError, ValueError) as e:
                 logger.warning(f"Error searching folder {current_folder}: {e}")
+            except Exception:
+                logger.warning(
+                    "Unexpected error searching folder %s",
+                    current_folder,
+                    exc_info=True,
+                )
 
         # Sort results by date (newest first)
         results.sort(key=lambda x: str(x.get("date") or "0"), reverse=True)
@@ -652,9 +674,12 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             # TODO: Record the action for learning in a separate module
 
             return result
-        except Exception as e:
+        except (IMAPClientError, OSError, ValueError) as e:
             logger.error(f"Error processing email: {e}")
             return f"Error: {e}"
+        except Exception:
+            logger.error("Unexpected error processing email", exc_info=True)
+            return "Error: an unexpected error occurred"
 
     # Process meeting invite and generate a draft reply
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
@@ -805,8 +830,11 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             else:
                 result["message"] = "Failed to save draft"
 
-        except Exception as e:
+        except (IMAPClientError, OSError, ValueError) as e:
             logger.error(f"Error processing meeting invite: {e}")
             result["message"] = f"Error: {e}"
+        except Exception:
+            logger.error("Unexpected error processing meeting invite", exc_info=True)
+            result["message"] = "Error: an unexpected error occurred"
 
         return result

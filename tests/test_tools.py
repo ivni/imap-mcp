@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 from mcp.server.fastmcp import Context, FastMCP
 
 from imap_mcp.imap_client import ImapClient
@@ -121,7 +122,7 @@ class TestTools:
         assert "Email moved from INBOX to Archive" in result
 
         # Test error handling
-        mock_client.move_email.side_effect = Exception("Connection error")
+        mock_client.move_email.side_effect = IMAPClientError("Connection error")
         result = await move_email("INBOX", 123, "Archive", mock_context)
         assert "Error" in result
 
@@ -169,7 +170,7 @@ class TestTools:
         assert "Email marked as unread" in result
 
         # Test error handling
-        mock_client.mark_email.side_effect = Exception("Server error")
+        mock_client.mark_email.side_effect = IMAPClientError("Server error")
         result = await mark_as_unread("INBOX", 123, mock_context)
         assert "Error" in result
 
@@ -221,7 +222,7 @@ class TestTools:
         assert "Failed to delete" in result
 
         # Test error handling
-        mock_client.delete_email.side_effect = Exception("Permission denied")
+        mock_client.delete_email.side_effect = IMAPClientError("Permission denied")
         result = await delete_email("INBOX", 123, mock_context)
         assert "Error" in result
 
@@ -350,17 +351,17 @@ class TestTools:
         search_emails = tools["search_emails"]
 
         # Test move_email error handling
-        mock_client.move_email.side_effect = Exception("Network error")
+        mock_client.move_email.side_effect = IMAPClientError("Network error")
         result = await move_email("INBOX", 123, "Archive", mock_context)
         assert "Error" in result
 
         # Test mark_as_read error handling
-        mock_client.mark_email.side_effect = Exception("Server timeout")
+        mock_client.mark_email.side_effect = IMAPClientError("Server timeout")
         result = await mark_as_read("INBOX", 123, mock_context)
         assert "Error" in result
 
         # Test search_emails error handling
-        mock_client.search.side_effect = Exception("Search failed")
+        mock_client.search.side_effect = IMAPClientError("Search failed")
         result = await search_emails("test", mock_context)
         # Search should continue with other folders and return an empty list
         assert "[]" in result or result == "[]"

@@ -324,7 +324,7 @@ class Email:
                                 raw = part.get_payload(decode=True)
                                 if isinstance(raw, bytes):
                                     content.text = raw.decode(charset, errors="replace")
-                            except Exception as e:
+                            except (UnicodeDecodeError, LookupError) as e:
                                 content.text = (
                                     f"[Error decoding plain text content: {e}]"
                                 )
@@ -337,7 +337,7 @@ class Email:
                                 raw = part.get_payload(decode=True)
                                 if isinstance(raw, bytes):
                                     content.html = raw.decode(charset, errors="replace")
-                            except Exception as e:
+                            except (UnicodeDecodeError, LookupError) as e:
                                 content.html = f"[Error decoding HTML content: {e}]"
 
             # Start processing parts
@@ -352,7 +352,7 @@ class Email:
                     raw = message.get_payload(decode=True)
                     if isinstance(raw, bytes):
                         content.text = raw.decode(charset, errors="replace")
-                except Exception as e:
+                except (UnicodeDecodeError, LookupError) as e:
                     content.text = f"[Error decoding plain text content: {e}]"
             elif content_type == "text/html":
                 try:
@@ -360,7 +360,7 @@ class Email:
                     raw = message.get_payload(decode=True)
                     if isinstance(raw, bytes):
                         content.html = raw.decode(charset, errors="replace")
-                except Exception as e:
+                except (UnicodeDecodeError, LookupError) as e:
                     content.html = f"[Error decoding HTML content: {e}]"
             else:
                 # If not plain text or HTML, treat as attachment

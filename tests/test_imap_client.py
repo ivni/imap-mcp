@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
+from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 
 from imap_mcp.config import ImapConfig
 from imap_mcp.imap_client import MAX_FETCH_UIDS, ImapClient
@@ -864,7 +865,9 @@ class TestImapClient:
 
             # Set up mock responses
             mock_imap_client.select_folder.return_value = {b"EXISTS": 10}
-            mock_imap_client.add_flags.side_effect = Exception("Failed to add flag")
+            mock_imap_client.add_flags.side_effect = IMAPClientError(
+                "Failed to add flag"
+            )
 
             # Connect first
             client.connect()
@@ -1213,7 +1216,7 @@ class TestImapClient:
 
             # Set up mock responses
             mock_imap_client.select_folder.return_value = {b"EXISTS": 10}
-            mock_imap_client.copy.side_effect = Exception("Failed to copy email")
+            mock_imap_client.copy.side_effect = IMAPClientError("Failed to copy email")
 
             # Connect first
             client.connect()
@@ -1287,7 +1290,9 @@ class TestImapClient:
 
             # Set up mock responses
             mock_imap_client.select_folder.return_value = {b"EXISTS": 10}
-            mock_imap_client.add_flags.side_effect = Exception("Failed to add flag")
+            mock_imap_client.add_flags.side_effect = IMAPClientError(
+                "Failed to add flag"
+            )
 
             # Connect first
             client.connect()

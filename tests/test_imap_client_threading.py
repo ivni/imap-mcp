@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
+from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 from imapclient.response_types import SearchIds
 
 from imap_mcp.config import ImapConfig
@@ -706,7 +707,7 @@ class TestImapClientVerifyConnection(unittest.TestCase):
 
     def test_verify_connection_failure(self) -> None:
         """Test connection verification failure raises ConnectionError."""
-        self.mock_client.capabilities.side_effect = Exception("Connection lost")
+        self.mock_client.capabilities.side_effect = IMAPClientError("Connection lost")
 
         with pytest.raises(
             ConnectionError, match="IMAP connection verification failed"

@@ -54,7 +54,7 @@ def verify_smtp_connection(config: SmtpConfig) -> bool:
         server.quit()
         logger.info("SMTP connection verified (%s:%d)", config.host, config.port)
         return True
-    except Exception as e:
+    except OSError as e:
         raise ConnectionError(f"SMTP connection verification failed: {e}")
 
 

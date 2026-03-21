@@ -230,7 +230,7 @@ def discover_jwks_uri(issuer_url: str) -> str:
             jwks_uri = config.get("jwks_uri")
             if jwks_uri:
                 return str(jwks_uri)
-    except Exception as e:
+    except (OSError, json.JSONDecodeError, ValueError) as e:
         logger.error("OIDC discovery failed for %s: %s", discovery_url, e)
         raise ValueError(
             f"OIDC discovery failed for {issuer_url}: {e}. "

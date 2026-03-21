@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 
 from imap_mcp.config import ImapConfig
 from imap_mcp.imap_client import ImapClient
@@ -139,7 +140,7 @@ class TestDraftsFunctionality:
         """Test error handling when saving a draft fails."""
         # Mock behavior
         mock_imap_client._get_drafts_folder = MagicMock(return_value="Drafts")
-        mock_imap_client.client.append.side_effect = Exception("IMAP error")
+        mock_imap_client.client.append.side_effect = IMAPClientError("IMAP error")
 
         # Call save_draft_mime
         uid = mock_imap_client.save_draft_mime(sample_mime_message)

@@ -4,6 +4,7 @@ import json
 import logging
 from typing import Any, Dict, List
 
+from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 from mcp.server.fastmcp import Context, FastMCP
 
 from imap_mcp.imap_client import ImapClient
@@ -92,9 +93,12 @@ def register_resources(mcp: FastMCP, imap_client: ImapClient) -> None:
                 )
 
             return json.dumps(summaries, indent=2)
-        except Exception as e:
+        except (IMAPClientError, OSError, ValueError) as e:
             logger.error(f"Error listing emails: {e}")
             return f"Error: {e}"
+        except Exception:
+            logger.error("Unexpected error listing emails", exc_info=True)
+            return "Error: an unexpected error occurred"
 
     # Search emails across folders
     @mcp.resource("email://search/{query}")
@@ -147,8 +151,12 @@ def register_resources(mcp: FastMCP, imap_client: ImapClient) -> None:
                                 "has_attachments": len(email_obj.attachments) > 0,
                             }
                         )
-            except Exception as e:
+            except (IMAPClientError, OSError, ValueError) as e:
                 logger.warning(f"Error searching folder {folder}: {e}")
+            except Exception:
+                logger.warning(
+                    "Unexpected error searching folder %s", folder, exc_info=True
+                )
 
         # Sort results by date (newest first)
         results.sort(key=lambda x: str(x.get("date") or "0"), reverse=True)
@@ -214,6 +222,9 @@ def register_resources(mcp: FastMCP, imap_client: ImapClient) -> None:
             parts.append(content)
 
             return "\n".join(parts)
-        except Exception as e:
+        except (IMAPClientError, OSError, ValueError) as e:
             logger.error(f"Error fetching email: {e}")
             return f"Error: {e}"
+        except Exception:
+            logger.error("Unexpected error fetching email", exc_info=True)
+            return "Error: an unexpected error occurred"

@@ -5,6 +5,7 @@ from typing import Any, Optional
 from unittest import mock
 
 import pytest
+from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 from mcp.server.fastmcp import FastMCP
 
 from imap_mcp.resources import get_client_from_context, register_resources
@@ -232,7 +233,7 @@ class TestResources:
         register_resources(mock_mcp, mock_imap_client)
 
         # Setup client to raise exception
-        mock_imap_client.fetch_email.side_effect = Exception("Test error")
+        mock_imap_client.fetch_email.side_effect = IMAPClientError("Test error")
 
         # Test get_email error handling
         get_email = mock_mcp.resources["email://{folder}/{uid}"]
