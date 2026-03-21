@@ -40,6 +40,47 @@ The IMAP MCP server is designed to work with Claude or any other MCP-compatible 
 * **Interaction Patterns**: Structured patterns for processing emails and learning preferences (planned)
 * **Learning Layer**: Record and analyze user decisions to predict future actions (planned)
 
+## Available Tools
+
+All tools carry [MCP ToolAnnotations](https://modelcontextprotocol.io/specification/2025-06-18/schema#toolannotations) so clients (Claude, ChatGPT, etc.) can group them by safety level and skip confirmation prompts for read-only operations.
+
+### Read-only (safe — no server state changes)
+
+| Tool | Title | Description |
+|------|-------|-------------|
+| `search_emails` | Search Emails | Search across folders by text, sender, subject, or status filters with pagination |
+| `identify_meeting_invite_tool` | Identify Meeting Invite | Analyze an email for calendar invite data without modifying state |
+| `check_calendar_availability_tool` | Check Calendar Availability | Check availability for a proposed meeting time (mock calendar) |
+| `draft_meeting_reply_tool` | Generate Meeting Reply | Generate accept/decline reply text without saving to server |
+| `server_status` | Server Status | Show IMAP/SMTP configuration and connection status |
+
+### Write, non-destructive (modifies state but only additively)
+
+| Tool | Title | Description | Confirmation |
+|------|-------|-------------|-------------|
+| `mark_as_read` | Mark as Read | Set the IMAP `\Seen` flag (idempotent) | No |
+| `mark_as_unread` | Mark as Unread | Remove the IMAP `\Seen` flag (idempotent) | No |
+| `flag_email` | Flag/Unflag Email | Set or remove `\Flagged` star/important marker (idempotent) | No |
+| `draft_reply_tool` | Save Draft Reply | Compose a reply and save as draft with proper threading headers | Yes |
+| `process_meeting_invite` | Process Meeting Invite | Full workflow: identify invite → check calendar → save draft reply | Yes |
+
+### Write, destructive (permanently removes or relocates data)
+
+| Tool | Title | Description | Confirmation |
+|------|-------|-------------|-------------|
+| `move_email` | Move Email | Move email between folders (removes from source) | Yes |
+| `delete_email` | Delete Email | Permanently delete email (irreversible) | Yes |
+| `process_email` | Process Email Action | Multi-action tool: read/unread/flag/unflag/move/delete | Yes (move/delete) |
+
+### Resources
+
+| URI | Title | Description |
+|-----|-------|-------------|
+| `email://folders` | Email Folders | List all accessible IMAP folders |
+| `email://{folder}/list` | List Emails in Folder | Up to 50 most recent emails with summaries |
+| `email://search/{query}` | Search Emails | Search across all folders (up to 10 per folder) |
+| `email://{folder}/{uid}` | Get Email Content | Full email content including headers, body, attachments |
+
 ## Project Structure
 
 ```plaintext

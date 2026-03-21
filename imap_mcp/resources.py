@@ -38,10 +38,17 @@ def register_resources(mcp: FastMCP, imap_client: ImapClient) -> None:
         imap_client: IMAP client
     """
 
-    # List folders resource
-    @mcp.resource("email://folders")
+    @mcp.resource(
+        "email://folders",
+        title="Email Folders",
+        description="List all available IMAP folders filtered by allowed_folders config",
+    )
     async def get_folders() -> str:
-        """List available email folders.
+        """List all available email folders on the IMAP server.
+
+        Returns a JSON array of folder names the server can access, filtered
+        by the allowed_folders configuration. Use these folder names as
+        parameters for other email tools and resources.
 
         Returns:
             JSON-formatted list of folders
@@ -51,10 +58,17 @@ def register_resources(mcp: FastMCP, imap_client: ImapClient) -> None:
         folders = client.list_folders()
         return json.dumps(folders, indent=2)
 
-    # List email summaries in a folder
-    @mcp.resource("email://{folder}/list")
+    @mcp.resource(
+        "email://{folder}/list",
+        title="List Emails in Folder",
+        description="List the most recent emails in a folder (up to 50, newest first)",
+    )
     async def list_emails(folder: str) -> str:
-        """List emails in a folder.
+        """List the most recent emails in the specified IMAP folder.
+
+        Returns up to 50 email summaries sorted by date (newest first). Each
+        summary includes UID, folder, sender, recipients, subject, date, flags,
+        and attachment indicator. Use the UID with other tools to act on emails.
 
         Args:
             folder: Folder name
@@ -100,13 +114,20 @@ def register_resources(mcp: FastMCP, imap_client: ImapClient) -> None:
             logger.error("Unexpected error listing emails", exc_info=True)
             return "Error: an unexpected error occurred"
 
-    # Search emails across folders
-    @mcp.resource("email://search/{query}")
+    @mcp.resource(
+        "email://search/{query}",
+        title="Search Emails",
+        description="Search for emails matching a query across all accessible folders",
+    )
     async def search_emails(query: str) -> str:
-        """Search for emails across folders.
+        """Search for emails matching a query across all accessible IMAP folders.
+
+        Supports predefined searches (all, unseen, seen, today, week, month) and
+        free-text search. Returns up to 10 results per folder, sorted by date
+        (newest first). For more control, use the search_emails tool instead.
 
         Args:
-            query: Search query (format depends on search mode)
+            query: Search query — predefined keyword or free-text search term
 
         Returns:
             JSON-formatted list of email summaries
@@ -163,14 +184,21 @@ def register_resources(mcp: FastMCP, imap_client: ImapClient) -> None:
 
         return json.dumps(results, indent=2)
 
-    # Get a specific email by UID
-    @mcp.resource("email://{folder}/{uid}")
+    @mcp.resource(
+        "email://{folder}/{uid}",
+        title="Get Email Content",
+        description="Retrieve the full content of a specific email by folder and UID",
+    )
     async def get_email(folder: str, uid: str) -> str:
-        """Get a specific email.
+        """Retrieve the full content of a specific email by folder and UID.
+
+        Returns the complete email including headers (From, To, Cc, Date,
+        Subject), flags, attachment list, and the message body (prefers plain
+        text, falls back to HTML). Use UIDs from list or search results.
 
         Args:
             folder: Folder name
-            uid: Email UID
+            uid: Email UID (positive integer)
 
         Returns:
             Email content in text format

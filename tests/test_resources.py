@@ -82,7 +82,7 @@ class TestResources:
         mock_server.resources = {}
 
         # Mock the resource decorator
-        def resource_decorator(path: Any) -> Any:
+        def resource_decorator(path: Any, **kwargs: Any) -> Any:
             def decorator(func: Any) -> Any:
                 mock_server.resources[path] = func
                 return func
@@ -343,7 +343,7 @@ class TestResources:
         real_resources = {}
 
         # Mock FastMCP resource method to capture registrations
-        def resource_decorator(path: Any) -> Any:
+        def resource_decorator(path: Any, **kwargs: Any) -> Any:
             def decorator(func: Any) -> Any:
                 real_resources[path] = func
                 return func

@@ -41,8 +41,8 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 - `imap_mcp/server.py` — FastMCP server entry point, lifespan connection management
 - `imap_mcp/config.py` — YAML + env var config (ImapConfig, ServerConfig); passwords only from env vars; `create_ssl_context()` helper for TLS
 - `imap_mcp/imap_client.py` — IMAP operations (connect, search, fetch, move, delete, threading)
-- `imap_mcp/tools.py` — MCP tool registrations (search, delete, move, flag, draft, meeting workflow)
-- `imap_mcp/resources.py` — MCP resource registrations (folders, list, search, email content)
+- `imap_mcp/tools.py` — MCP tool registrations with ToolAnnotations (3 tiers: read-only, write non-destructive, write destructive); all tools have title + annotations
+- `imap_mcp/resources.py` — MCP resource registrations with title/description (folders, list, search, email content)
 - `imap_mcp/models.py` — Data models: Email, EmailAddress, EmailContent, EmailAttachment
 - `imap_mcp/auth.py` — JWT authentication: OIDC provider verification via JWKS (RS256)
 - `imap_mcp/smtp_client.py` — Reply composition with MIME (plain text + HTML)

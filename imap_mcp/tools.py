@@ -136,13 +136,19 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
     """
 
     # Using decorator pattern to register tools
-    @mcp.tool()
+    @mcp.tool(
+        title="Generate Meeting Reply",
+        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+    )
     async def draft_meeting_reply_tool(
         invite_details: Dict[str, Any],
         availability_status: bool,
         ctx: Context,
     ) -> Dict[str, str]:
-        """Drafts a meeting reply (accept/decline) based on calendar invite details and availability.
+        """Generate meeting reply text (accept or decline) without saving to the server.
+
+        Returns reply text and metadata but does NOT save a draft or send anything.
+        Use process_meeting_invite to save the reply as a draft.
 
         Args:
             invite_details: Dictionary containing invite details (subject, start_time, end_time, organizer, location)
@@ -157,11 +163,18 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         availability = {"available": availability_status}
         return generate_meeting_reply_content(invite_details, availability)
 
-    @mcp.tool()
+    @mcp.tool(
+        title="Identify Meeting Invite",
+        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
+    )
     async def identify_meeting_invite_tool(
         folder: str, uid: int, ctx: Context
     ) -> Dict[str, Any]:
-        """Identifies if an email is a meeting invite and extracts relevant details.
+        """Analyze an email to determine if it contains a meeting/calendar invite.
+
+        Fetches the email and inspects content for iCalendar data. If found,
+        extracts subject, organizer, start/end times, and location. Does not
+        modify any server state.
 
         Args:
             folder: Email folder name
@@ -186,15 +199,21 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             }
         return identify_meeting_invite_details(email_obj)
 
-    @mcp.tool()
+    @mcp.tool(
+        title="Check Calendar Availability",
+        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+    )
     async def check_calendar_availability_tool(
         start_time: str, end_time: str, ctx: Context
     ) -> Dict[str, Any]:
-        """Checks calendar availability for a given time slot.
+        """Check calendar availability for a proposed meeting time slot.
+
+        Returns availability status for the specified time range. Currently uses
+        a mock calendar implementation. Times must be ISO 8601 format.
 
         Args:
-            start_time: Meeting start time (ISO format)
-            end_time: Meeting end time (ISO format)
+            start_time: Meeting start time (ISO 8601 format, e.g. "2024-01-15T10:00:00Z")
+            end_time: Meeting end time (ISO 8601 format)
             ctx: MCP context
 
         Returns:
@@ -204,7 +223,15 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
 
         return check_mock_availability(start_time, end_time)
 
-    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
+    @mcp.tool(
+        title="Save Draft Reply",
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+    )
     async def draft_reply_tool(
         folder: str,
         uid: int,
@@ -214,9 +241,11 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         cc: Optional[List[str]] = None,
         body_html: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Creates a draft reply to an email and saves it to the drafts folder.
+        """Compose a reply to an email and save it as a draft on the IMAP server.
 
-        Requires user confirmation before saving the draft.
+        Creates a MIME reply with proper threading headers (In-Reply-To, References).
+        Supports plain text, optional HTML, reply-all with CC. Requires user
+        confirmation. Additive — creates a new draft without modifying the original.
 
         Args:
             folder: Email folder name
@@ -283,17 +312,26 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             return {"status": "success", "draft_uid": draft_uid}
         return {"status": "error", "message": "Failed to save draft"}
 
-    # Move email to a different folder
-    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
+    @mcp.tool(
+        title="Move Email",
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+    )
     async def move_email(
         folder: str,
         uid: int,
         target_folder: str,
         ctx: Context,
     ) -> str:
-        """Move email to another folder.
+        """Move an email from one IMAP folder to another.
 
-        Requires user confirmation before moving.
+        Copies to the target folder and deletes from the source. Destructive —
+        the email no longer exists in the original folder. Requires user
+        confirmation. Both folders must be in the allowed folders list.
 
         Args:
             folder: Source folder
@@ -327,14 +365,23 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             logger.error("Unexpected error moving email", exc_info=True)
             return "Error: an unexpected error occurred"
 
-    # Mark email as read
-    @mcp.tool()
+    @mcp.tool(
+        title="Mark as Read",
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=True,
+        ),
+    )
     async def mark_as_read(
         folder: str,
         uid: int,
         ctx: Context,
     ) -> str:
-        """Mark email as read.
+        r"""Mark an email as read by setting the IMAP \Seen flag.
+
+        Idempotent — marking an already-read email has no additional effect.
 
         Args:
             folder: Folder name
@@ -362,14 +409,23 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             logger.error("Unexpected error marking email as read", exc_info=True)
             return "Error: an unexpected error occurred"
 
-    # Mark email as unread
-    @mcp.tool()
+    @mcp.tool(
+        title="Mark as Unread",
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=True,
+        ),
+    )
     async def mark_as_unread(
         folder: str,
         uid: int,
         ctx: Context,
     ) -> str:
-        """Mark email as unread.
+        r"""Mark an email as unread by removing the IMAP \Seen flag.
+
+        Idempotent — marking an already-unread email has no additional effect.
 
         Args:
             folder: Folder name
@@ -397,20 +453,29 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             logger.error("Unexpected error marking email as unread", exc_info=True)
             return "Error: an unexpected error occurred"
 
-    # Flag email (important/starred)
-    @mcp.tool()
+    @mcp.tool(
+        title="Flag/Unflag Email",
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=True,
+        ),
+    )
     async def flag_email(
         folder: str,
         uid: int,
         ctx: Context,
         flag: bool = True,
     ) -> str:
-        """Flag or unflag email.
+        r"""Set or remove the IMAP \Flagged flag (star/important marker).
+
+        Pass flag=True to star, flag=False to unstar. Idempotent.
 
         Args:
             folder: Folder name
             uid: Email UID
-            flag: True to flag, False to unflag
+            flag: True to flag (star), False to unflag (unstar)
             ctx: MCP context
 
         Returns:
@@ -434,16 +499,24 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             logger.error("Unexpected error flagging email", exc_info=True)
             return "Error: an unexpected error occurred"
 
-    # Delete email
-    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
+    @mcp.tool(
+        title="Delete Email",
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+    )
     async def delete_email(
         folder: str,
         uid: int,
         ctx: Context,
     ) -> str:
-        """Delete email.
+        r"""Permanently delete an email from the IMAP server.
 
-        Requires user confirmation before deleting.
+        Sets \Deleted flag and expunges. Irreversible. Requires user
+        confirmation. For soft delete, use move_email to move to Trash instead.
 
         Args:
             folder: Folder name
@@ -477,8 +550,10 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             logger.error("Unexpected error deleting email", exc_info=True)
             return "Error: an unexpected error occurred"
 
-    # Search for emails
-    @mcp.tool()
+    @mcp.tool(
+        title="Search Emails",
+        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
+    )
     async def search_emails(
         query: str,
         ctx: Context,
@@ -487,14 +562,20 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         limit: int = 10,
         offset: int = 0,
     ) -> str:
-        """Search for emails.
+        """Search for emails across one or more IMAP folders.
+
+        Supports text search, sender/recipient/subject filtering, and status
+        filters (seen/unseen/today/week/month). Returns paginated results sorted
+        by date (newest first) with UID, folder, sender, subject, date, flags,
+        and attachment indicator.
 
         Args:
             query: Search query
-            folder: Folder to search in (None for all folders)
-            criteria: Search criteria (text, from, to, subject, all, unseen, seen)
-            limit: Maximum number of results
-            offset: Number of results to skip (for pagination)
+            folder: Folder to search in (None for all allowed folders)
+            criteria: Search criteria — "text" (full-text), "from", "to",
+                "subject", "all" (list all), "unseen", "seen", "today", "week", "month"
+            limit: Maximum number of results (default 10)
+            offset: Number of results to skip for pagination (default 0)
             ctx: MCP context
 
         Returns:
@@ -593,8 +674,15 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             indent=2,
         )
 
-    # Process email interactive session
-    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
+    @mcp.tool(
+        title="Process Email Action",
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+    )
     async def process_email(
         folder: str,
         uid: int,
@@ -603,18 +691,18 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         notes: Optional[str] = None,
         target_folder: Optional[str] = None,
     ) -> str:
-        """Process an email with specified action.
+        """Perform an action on an email: read, unread, flag, unflag, move, or delete.
 
-        This is a higher-level tool that combines multiple actions and records
-        the decision for learning purposes. Destructive actions (delete, move)
-        require user confirmation.
+        Higher-level tool combining multiple operations. Destructive actions
+        (move, delete) require user confirmation; others execute immediately.
+        Optional notes parameter records the reason for the action.
 
         Args:
             folder: Folder name
             uid: Email UID
-            action: Action to take (move, read, unread, flag, unflag, delete)
+            action: Action to take — "read", "unread", "flag", "unflag", "move", "delete"
             notes: Optional notes about the decision
-            target_folder: Target folder for move action
+            target_folder: Target folder (required for "move" action)
             ctx: MCP context
 
         Returns:
@@ -703,30 +791,40 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             logger.error("Unexpected error processing email", exc_info=True)
             return "Error: an unexpected error occurred"
 
-    # Process meeting invite and generate a draft reply
-    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
+    @mcp.tool(
+        title="Process Meeting Invite",
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+    )
     async def process_meeting_invite(
         folder: str,
         uid: int,
         ctx: Context,
         availability_mode: str = "random",
     ) -> dict:
-        """Process a meeting invite email and create a draft reply.
+        """Analyze a meeting invite, check availability, and save a draft reply.
 
-        Requires user confirmation before processing. This tool orchestrates
-        the full workflow:
-        1. Identifies if the email is a meeting invite
-        2. Checks calendar availability for the meeting time
-        3. Generates an appropriate reply (accept/decline)
-        4. Creates a MIME message for the reply
-        5. Saves the reply as a draft
+        Full workflow: identify invite, check calendar, generate reply, save draft.
+        Requires user confirmation. Additive — creates a new draft without
+        modifying the original email.
+
+        Steps:
+        1. Fetches the email and identifies meeting invite details
+        2. Checks calendar availability for the proposed time
+        3. Generates an accept or decline reply based on availability
+        4. Creates a MIME reply message with proper threading headers
+        5. Saves the reply as a draft on the IMAP server
 
         Args:
             folder: Folder containing the invite email
             uid: UID of the invite email
             ctx: MCP context
-            availability_mode: Mode for availability check (random, always_available,
-                              always_busy, business_hours, weekdays)
+            availability_mode: Mode for availability check — "random",
+                "always_available", "always_busy", "business_hours", "weekdays"
 
         Returns:
             Dictionary with the processing result:

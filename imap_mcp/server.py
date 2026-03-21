@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator, Dict, Optional
 
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
 
 from imap_mcp.config import ServerConfig, load_config
@@ -159,9 +160,16 @@ def create_server(
     register_tools(server, imap_client)
 
     # Add server status tool
-    @server.tool()
+    @server.tool(
+        title="Server Status",
+        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+    )
     def server_status() -> str:
-        """Get server status and configuration info."""
+        """Return IMAP MCP server configuration and connection status.
+
+        Shows IMAP host, port, username, SSL settings, allowed folders,
+        and SMTP configuration. Does not reveal passwords.
+        """
         status = {
             "server": "IMAP MCP",
             "imap_host": config.imap.host,
