@@ -847,6 +847,7 @@ class TestLoadConfig:
         with patch("builtins.open", side_effect=FileNotFoundError):
             config = load_config("nonexistent.yaml")
 
+        assert config.smtp is not None
         assert config.smtp.host == "smtp.example.com"
         assert config.smtp.username == "test@example.com"  # Fallback from IMAP
         assert config.smtp.password == "password"  # Fallback from IMAP

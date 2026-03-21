@@ -3,7 +3,7 @@
 import json
 import os
 from datetime import datetime
-from typing import Any
+from typing import Any, Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -90,7 +90,7 @@ class TestTools:
     """Test class for MCP tools."""
 
     @pytest.fixture(autouse=True)
-    def patch_get_client(self, mock_client: Any) -> None:
+    def patch_get_client(self, mock_client: Any) -> Generator[Any, None, None]:
         """Patch get_client_from_context for this class only."""
         with patch("imap_mcp.tools.get_client_from_context") as mock_get_client:
             mock_get_client.return_value = mock_client
@@ -820,7 +820,7 @@ class TestToolFolderValidation:
     """Tests for folder name validation in MCP tool handlers."""
 
     @pytest.fixture(autouse=True)
-    def patch_get_client(self, mock_client: Any) -> None:
+    def patch_get_client(self, mock_client: Any) -> Generator[Any, None, None]:
         """Patch get_client_from_context for this class only."""
         with patch("imap_mcp.tools.get_client_from_context") as mock_get_client:
             mock_get_client.return_value = mock_client
@@ -918,7 +918,7 @@ class TestProcessEmailFailurePaths:
     """Test that process_email returns failure messages when client methods return False."""
 
     @pytest.fixture(autouse=True)
-    def patch_get_client(self, mock_client: Any) -> None:
+    def patch_get_client(self, mock_client: Any) -> Generator[Any, None, None]:
         """Patch get_client_from_context for this class only."""
         with patch("imap_mcp.tools.get_client_from_context") as mock_get_client:
             mock_get_client.return_value = mock_client

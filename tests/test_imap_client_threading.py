@@ -3,6 +3,7 @@
 import email
 import email.mime.application
 import email.mime.audio
+import email.mime.base
 import email.mime.image
 import email.mime.multipart
 import email.mime.text
@@ -13,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
-from imapclient.response_types import SearchIds
+from imapclient.response_types import SearchIds  # type: ignore[import-untyped]
 
 from imap_mcp.config import ImapConfig
 from imap_mcp.imap_client import ImapClient
@@ -115,7 +116,7 @@ class TestImapClientThreading(unittest.TestCase):
 
                 # Create the appropriate MIME part based on content type
                 if main_type == "image":
-                    att_part = email.mime.image.MIMEImage(
+                    att_part: email.mime.base.MIMEBase = email.mime.image.MIMEImage(
                         attachment["content"], _subtype=sub_type
                     )
                 elif main_type == "application":
@@ -200,23 +201,23 @@ class TestImapClientThreading(unittest.TestCase):
         msg.attach(text_part)
 
         # Add PDF attachment
-        pdf_attachment = email.mime.application.MIMEApplication(
+        pdf_mime_part = email.mime.application.MIMEApplication(
             b"PDF content", _subtype="pdf"
         )
-        pdf_attachment.add_header(
+        pdf_mime_part.add_header(
             "Content-Disposition", 'attachment; filename="document.pdf"'
         )
-        pdf_attachment.add_header("Content-ID", "<pdf1>")
-        pdf_attachment.replace_header("Content-Type", "application/pdf")
-        msg.attach(pdf_attachment)
+        pdf_mime_part.add_header("Content-ID", "<pdf1>")
+        pdf_mime_part.replace_header("Content-Type", "application/pdf")
+        msg.attach(pdf_mime_part)
 
         # Add JPEG attachment
-        jpg_attachment = email.mime.image.MIMEImage(b"Image data", _subtype="jpeg")
-        jpg_attachment.add_header(
+        jpg_mime_part = email.mime.image.MIMEImage(b"Image data", _subtype="jpeg")
+        jpg_mime_part.add_header(
             "Content-Disposition", 'attachment; filename="image.jpg"'
         )
-        jpg_attachment.replace_header("Content-Type", "image/jpeg")
-        msg.attach(jpg_attachment)
+        jpg_mime_part.replace_header("Content-Type", "image/jpeg")
+        msg.attach(jpg_mime_part)
 
         # Set up mock response
         mock_email = {b"BODY[]": msg.as_bytes(), b"FLAGS": (b"\\Seen",)}
@@ -638,8 +639,8 @@ class TestImapClientThreading(unittest.TestCase):
         # Verify correct thread behavior
         assert len(thread_emails) == 2
         # Verify both encodings were handled properly
-        assert "UTF-8 text with special chars" in thread_emails[0].content.text
-        assert "Latin-1 text with special chars" in thread_emails[1].content.text
+        assert "UTF-8 text with special chars" in thread_emails[0].content.text  # type: ignore[operator]
+        assert "Latin-1 text with special chars" in thread_emails[1].content.text  # type: ignore[operator]
 
 
 class TestFetchThreadInjectionSafety(unittest.TestCase):

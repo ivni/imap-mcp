@@ -160,12 +160,12 @@ class TestMeetingReply:
     def test_generate_meeting_reply_content_invalid_input(self) -> None:
         """Test generating meeting reply content with invalid input."""
         # Test with non-dict invite details
-        result1 = generate_meeting_reply_content("not a dict", {"available": True})
+        result1 = generate_meeting_reply_content("not a dict", {"available": True})  # type: ignore[arg-type]
         assert result1["reply_type"] == "error"
         assert "Error:" in result1["reply_subject"]
 
         # Test with non-dict availability status
-        result2 = generate_meeting_reply_content({"subject": "Test"}, "not a dict")
+        result2 = generate_meeting_reply_content({"subject": "Test"}, "not a dict")  # type: ignore[arg-type]
         assert result2["reply_type"] == "error"
         assert "Error:" in result2["reply_subject"]
 

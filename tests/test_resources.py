@@ -350,7 +350,7 @@ class TestResources:
 
             return decorator
 
-        real_mcp.resource = resource_decorator
+        real_mcp.resource = resource_decorator  # type: ignore[method-assign, assignment]
 
         try:
             # This should succeed if all resources have correct parameter definitions

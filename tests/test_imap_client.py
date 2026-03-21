@@ -300,9 +300,9 @@ class TestImapClient:
 
         # Manually populate folder cache
         client.folder_cache = {
-            "INBOX": [b"\\HasNoChildren"],
-            "Sent": [b"\\HasNoChildren"],
-            "Trash": [b"\\HasNoChildren"],
+            "INBOX": ["\\HasNoChildren"],
+            "Sent": ["\\HasNoChildren"],
+            "Trash": ["\\HasNoChildren"],
         }
 
         with patch("imapclient.IMAPClient") as mock_client_class:
@@ -334,8 +334,8 @@ class TestImapClient:
 
         # Manually populate folder cache with old data
         client.folder_cache = {
-            "INBOX": [b"\\HasNoChildren"],
-            "OldFolder": [b"\\HasNoChildren"],
+            "INBOX": ["\\HasNoChildren"],
+            "OldFolder": ["\\HasNoChildren"],
         }
 
         with patch("imapclient.IMAPClient") as mock_client_class:
