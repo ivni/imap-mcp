@@ -24,9 +24,11 @@ class TestCreateReplyMime:
             to=[EmailAddress(name="Recipient Name", address="recipient@example.com")],
             cc=[EmailAddress(name="CC Recipient", address="cc@example.com")],
             date=datetime.now(),
-            content=EmailContent(text="Original message content\nOn multiple lines.",
-                                html="<p>Original message content</p><p>On multiple lines.</p>"),
-            headers={"References": "<previous@example.com>"}
+            content=EmailContent(
+                text="Original message content\nOn multiple lines.",
+                html="<p>Original message content</p><p>On multiple lines.</p>",
+            ),
+            headers={"References": "<previous@example.com>"},
         )
 
     def test_create_basic_reply(self, sample_email: Email) -> None:
@@ -36,10 +38,7 @@ class TestCreateReplyMime:
         body = "This is a reply."
 
         mime_message = create_reply_mime(
-            original_email=sample_email,
-            reply_to=reply_to,
-            subject=subject,
-            body=body
+            original_email=sample_email, reply_to=reply_to, subject=subject, body=body
         )
 
         # Check basic properties
@@ -70,11 +69,14 @@ class TestCreateReplyMime:
             reply_to=reply_to,
             subject=subject,
             body=body,
-            reply_all=True
+            reply_all=True,
         )
 
         # Check recipients - should include original CCs and sender
-        assert mime_message["To"] == "Sender Name <sender@example.com>, Recipient Name <recipient@example.com>"
+        assert (
+            mime_message["To"]
+            == "Sender Name <sender@example.com>, Recipient Name <recipient@example.com>"
+        )
         assert mime_message["Cc"] == "CC Recipient <cc@example.com>"
 
     def test_create_reply_with_custom_cc(self, sample_email: Email) -> None:
@@ -84,7 +86,7 @@ class TestCreateReplyMime:
         body = "This is a reply with custom CC."
         cc = [
             EmailAddress(name="Custom CC", address="custom@example.com"),
-            EmailAddress(name="Another CC", address="another@example.com")
+            EmailAddress(name="Another CC", address="another@example.com"),
         ]
 
         mime_message = create_reply_mime(
@@ -92,11 +94,14 @@ class TestCreateReplyMime:
             reply_to=reply_to,
             subject=subject,
             body=body,
-            cc=cc
+            cc=cc,
         )
 
         # Check CC recipients
-        assert mime_message["Cc"] == "Custom CC <custom@example.com>, Another CC <another@example.com>"
+        assert (
+            mime_message["Cc"]
+            == "Custom CC <custom@example.com>, Another CC <another@example.com>"
+        )
 
     def test_create_reply_with_subject_prefix(self, sample_email: Email) -> None:
         """Test creating a reply with a custom subject prefix."""
@@ -105,9 +110,7 @@ class TestCreateReplyMime:
 
         # No prefix provided, but original doesn't start with Re:
         mime_message = create_reply_mime(
-            original_email=sample_email,
-            reply_to=reply_to,
-            body=body
+            original_email=sample_email, reply_to=reply_to, body=body
         )
 
         assert mime_message["Subject"].startswith("Re: ")
@@ -118,7 +121,7 @@ class TestCreateReplyMime:
             original_email=sample_email,
             reply_to=reply_to,
             body=body,
-            subject=custom_subject
+            subject=custom_subject,
         )
 
         assert mime_message["Subject"] == custom_subject
@@ -126,9 +129,7 @@ class TestCreateReplyMime:
         # Original already has Re: prefix
         sample_email.subject = "Re: Already Prefixed"
         mime_message = create_reply_mime(
-            original_email=sample_email,
-            reply_to=reply_to,
-            body=body
+            original_email=sample_email, reply_to=reply_to, body=body
         )
 
         assert mime_message["Subject"] == "Re: Already Prefixed"
@@ -143,7 +144,7 @@ class TestCreateReplyMime:
             original_email=sample_email,
             reply_to=reply_to,
             body=body,
-            html_body=html_body
+            html_body=html_body,
         )
 
         # Should be multipart with at least 2 parts
@@ -162,9 +163,7 @@ class TestCreateReplyMime:
         body = "This is a reply with original content quoted."
 
         mime_message = create_reply_mime(
-            original_email=sample_email,
-            reply_to=reply_to,
-            body=body
+            original_email=sample_email, reply_to=reply_to, body=body
         )
 
         # Check content
@@ -183,7 +182,9 @@ class TestCreateReplyMime:
 
     def test_html_escaping_special_characters(self) -> None:
         """Test that special characters in plain-text replies are properly HTML-escaped."""
-        special_content = """He said "hello" & she said 'goodbye' <script>alert('xss')</script>"""
+        special_content = (
+            """He said "hello" & she said 'goodbye' <script>alert('xss')</script>"""
+        )
         email_with_special = Email(
             message_id="<special@example.com>",
             subject="Special Chars",
@@ -272,9 +273,7 @@ class TestCreateReplyMime:
         if mime_message.is_multipart():
             # For multipart, verify no extra unexpected parts were created
             parts = mime_message.get_payload()
-            assert len(parts) == 1 or all(
-                hasattr(p, "get_content_type") for p in parts
-            )
+            assert len(parts) == 1 or all(hasattr(p, "get_content_type") for p in parts)
         # Verify the fake Content-Type line is just text, not a real header
         assert "Injected" in payload
 
@@ -340,7 +339,9 @@ class TestVerifySmtpConnection:
         )
 
     @patch("imap_mcp.smtp_client.smtplib.SMTP")
-    def test_verify_smtp_tls_success(self, mock_smtp_cls: MagicMock, tls_config: SmtpConfig) -> None:
+    def test_verify_smtp_tls_success(
+        self, mock_smtp_cls: MagicMock, tls_config: SmtpConfig
+    ) -> None:
         """Test successful SMTP verification with STARTTLS."""
         mock_server = MagicMock()
         mock_smtp_cls.return_value = mock_server
@@ -355,7 +356,9 @@ class TestVerifySmtpConnection:
         mock_server.quit.assert_called_once()
 
     @patch("imap_mcp.smtp_client.smtplib.SMTP_SSL")
-    def test_verify_smtp_ssl_success(self, mock_smtp_ssl_cls: MagicMock, ssl_config: SmtpConfig) -> None:
+    def test_verify_smtp_ssl_success(
+        self, mock_smtp_ssl_cls: MagicMock, ssl_config: SmtpConfig
+    ) -> None:
         """Test successful SMTP verification with implicit SSL."""
         mock_server = MagicMock()
         mock_smtp_ssl_cls.return_value = mock_server
@@ -369,19 +372,29 @@ class TestVerifySmtpConnection:
         mock_server.quit.assert_called_once()
 
     @patch("imap_mcp.smtp_client.smtplib.SMTP")
-    def test_verify_smtp_auth_failure(self, mock_smtp_cls: MagicMock, tls_config: SmtpConfig) -> None:
+    def test_verify_smtp_auth_failure(
+        self, mock_smtp_cls: MagicMock, tls_config: SmtpConfig
+    ) -> None:
         """Test SMTP verification fails on authentication error."""
         mock_server = MagicMock()
         mock_smtp_cls.return_value = mock_server
-        mock_server.login.side_effect = smtplib.SMTPAuthenticationError(535, b"Auth failed")
+        mock_server.login.side_effect = smtplib.SMTPAuthenticationError(
+            535, b"Auth failed"
+        )
 
-        with pytest.raises(ConnectionError, match="SMTP connection verification failed"):
+        with pytest.raises(
+            ConnectionError, match="SMTP connection verification failed"
+        ):
             verify_smtp_connection(tls_config)
 
     @patch("imap_mcp.smtp_client.smtplib.SMTP")
-    def test_verify_smtp_network_failure(self, mock_smtp_cls: MagicMock, tls_config: SmtpConfig) -> None:
+    def test_verify_smtp_network_failure(
+        self, mock_smtp_cls: MagicMock, tls_config: SmtpConfig
+    ) -> None:
         """Test SMTP verification fails on network error."""
         mock_smtp_cls.side_effect = OSError("Connection refused")
 
-        with pytest.raises(ConnectionError, match="SMTP connection verification failed"):
+        with pytest.raises(
+            ConnectionError, match="SMTP connection verification failed"
+        ):
             verify_smtp_connection(tls_config)

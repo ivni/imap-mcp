@@ -226,7 +226,9 @@ class TestImapClient:
             assert client.connected is False
             assert client.client is None
 
-    def test_ensure_connected_when_not_connected(self, mock_imap_client: MagicMock) -> None:
+    def test_ensure_connected_when_not_connected(
+        self, mock_imap_client: MagicMock
+    ) -> None:
         """Test ensuring connection when not connected."""
         config = ImapConfig(
             host="imap.example.com",
@@ -253,7 +255,9 @@ class TestImapClient:
             # Verify client is now connected
             assert client.connected is True
 
-    def test_ensure_connected_when_already_connected(self, mock_imap_client: MagicMock) -> None:
+    def test_ensure_connected_when_already_connected(
+        self, mock_imap_client: MagicMock
+    ) -> None:
         """Test ensuring connection when already connected."""
         config = ImapConfig(
             host="imap.example.com",
@@ -361,7 +365,9 @@ class TestImapClient:
             # Verify cache was updated
             assert set(client.folder_cache.keys()) == {"INBOX", "Sent", "Drafts"}
 
-    def test_list_folders_with_allowed_folders(self, mock_imap_client: MagicMock) -> None:
+    def test_list_folders_with_allowed_folders(
+        self, mock_imap_client: MagicMock
+    ) -> None:
         """Test listing folders with allowed folders filter."""
         config = ImapConfig(
             host="imap.example.com",
@@ -423,7 +429,9 @@ class TestImapClient:
             result = client.select_folder("INBOX")
 
             # Verify select_folder was called with correct folder and default readonly=False
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=False)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=False
+            )
 
             # Verify result is correct
             assert result == {b"EXISTS": 10}
@@ -435,7 +443,9 @@ class TestImapClient:
             result = client.select_folder("INBOX", readonly=True)
 
             # Verify select_folder was called with readonly=True
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=True)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=True
+            )
 
     def test_select_folder_not_allowed(self, mock_imap_client: MagicMock) -> None:
         """Test selecting a folder that's not allowed."""
@@ -490,7 +500,9 @@ class TestImapClient:
             result = client.search("unseen", folder="INBOX")
 
             # Verify select_folder was called with readonly=True (safe for search)
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=True)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=True
+            )
 
             # Verify search was called with correct criteria
             mock_imap_client.search.assert_called_once_with("UNSEEN", charset=None)
@@ -506,14 +518,20 @@ class TestImapClient:
             result = client.search("today", folder="INBOX")
 
             # Verify select_folder was called with readonly=True
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=True)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=True
+            )
 
             # Verify search was called with correct criteria (SINCE today's date)
             mock_imap_client.search.assert_called_once()
             args = mock_imap_client.search.call_args[0][0]
             assert args[0] == "SINCE"
             # Since we can't predict the exact type, we'll just check it's a date-like object
-            assert hasattr(args[1], 'year') and hasattr(args[1], 'month') and hasattr(args[1], 'day')
+            assert (
+                hasattr(args[1], "year")
+                and hasattr(args[1], "month")
+                and hasattr(args[1], "day")
+            )
 
     def test_search_with_complex_criteria(self, mock_imap_client: MagicMock) -> None:
         """Test searching with complex criteria."""
@@ -541,15 +559,21 @@ class TestImapClient:
             result = client.search(complex_criteria, folder="Sent")
 
             # Verify select_folder was called with readonly=True
-            mock_imap_client.select_folder.assert_called_once_with("Sent", readonly=True)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "Sent", readonly=True
+            )
 
             # Verify search was called with correct criteria
-            mock_imap_client.search.assert_called_once_with(complex_criteria, charset=None)
+            mock_imap_client.search.assert_called_once_with(
+                complex_criteria, charset=None
+            )
 
             # Verify result is correct
             assert result == [4, 5, 6]
 
-    def test_fetch_email(self, mock_imap_client: MagicMock, test_email_response_data: Dict[bytes, Any]) -> None:
+    def test_fetch_email(
+        self, mock_imap_client: MagicMock, test_email_response_data: Dict[bytes, Any]
+    ) -> None:
         """Test fetching a single email."""
         config = ImapConfig(
             host="imap.example.com",
@@ -574,10 +598,14 @@ class TestImapClient:
             email_obj = client.fetch_email(12345, folder="INBOX")
 
             # Verify select_folder was called with readonly=True
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=True)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=True
+            )
 
             # Verify fetch was called with correct parameters
-            mock_imap_client.fetch.assert_called_once_with([12345], ["BODY.PEEK[]", "FLAGS"])
+            mock_imap_client.fetch.assert_called_once_with(
+                [12345], ["BODY.PEEK[]", "FLAGS"]
+            )
 
             # Verify result is a valid Email object
             assert isinstance(email_obj, Email)
@@ -612,15 +640,23 @@ class TestImapClient:
             email_obj = client.fetch_email(99999, folder="INBOX")
 
             # Verify select_folder was called with readonly=True
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=True)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=True
+            )
 
             # Verify fetch was called with correct parameters
-            mock_imap_client.fetch.assert_called_once_with([99999], ["BODY.PEEK[]", "FLAGS"])
+            mock_imap_client.fetch.assert_called_once_with(
+                [99999], ["BODY.PEEK[]", "FLAGS"]
+            )
 
             # Verify result is None
             assert email_obj is None
 
-    def test_fetch_emails(self, mock_imap_client: MagicMock, make_test_email_response_data: Callable[..., Dict[bytes, Any]]) -> None:
+    def test_fetch_emails(
+        self,
+        mock_imap_client: MagicMock,
+        make_test_email_response_data: Callable[..., Dict[bytes, Any]],
+    ) -> None:
         """Test fetching multiple emails."""
         config = ImapConfig(
             host="imap.example.com",
@@ -641,15 +677,27 @@ class TestImapClient:
             response_data = {
                 101: make_test_email_response_data(
                     uid=101,
-                    headers={"Subject": "Email 1", "From": "sender@example.com", "To": "recipient@example.com"}
+                    headers={
+                        "Subject": "Email 1",
+                        "From": "sender@example.com",
+                        "To": "recipient@example.com",
+                    },
                 ),
                 102: make_test_email_response_data(
                     uid=102,
-                    headers={"Subject": "Email 2", "From": "sender@example.com", "To": "recipient@example.com"}
+                    headers={
+                        "Subject": "Email 2",
+                        "From": "sender@example.com",
+                        "To": "recipient@example.com",
+                    },
                 ),
                 103: make_test_email_response_data(
                     uid=103,
-                    headers={"Subject": "Email 3", "From": "sender@example.com", "To": "recipient@example.com"}
+                    headers={
+                        "Subject": "Email 3",
+                        "From": "sender@example.com",
+                        "To": "recipient@example.com",
+                    },
                 ),
             }
             mock_imap_client.fetch.return_value = response_data
@@ -661,10 +709,14 @@ class TestImapClient:
             emails = client.fetch_emails([101, 102, 103], folder="INBOX")
 
             # Verify select_folder was called with readonly=True
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=True)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=True
+            )
 
             # Verify fetch was called with correct parameters
-            mock_imap_client.fetch.assert_called_once_with([101, 102, 103], ["BODY.PEEK[]", "FLAGS"])
+            mock_imap_client.fetch.assert_called_once_with(
+                [101, 102, 103], ["BODY.PEEK[]", "FLAGS"]
+            )
 
             # Verify result contains all emails
             assert len(emails) == 3
@@ -677,7 +729,11 @@ class TestImapClient:
             assert emails[102].subject == "Email 2"
             assert emails[103].subject == "Email 3"
 
-    def test_fetch_emails_with_limit(self, mock_imap_client: MagicMock, make_test_email_response_data: Callable[..., Dict[bytes, Any]]) -> None:
+    def test_fetch_emails_with_limit(
+        self,
+        mock_imap_client: MagicMock,
+        make_test_email_response_data: Callable[..., Dict[bytes, Any]],
+    ) -> None:
         """Test fetching emails with a limit."""
         config = ImapConfig(
             host="imap.example.com",
@@ -698,11 +754,19 @@ class TestImapClient:
             response_data = {
                 101: make_test_email_response_data(
                     uid=101,
-                    headers={"Subject": "Email 1", "From": "sender@example.com", "To": "recipient@example.com"}
+                    headers={
+                        "Subject": "Email 1",
+                        "From": "sender@example.com",
+                        "To": "recipient@example.com",
+                    },
                 ),
                 102: make_test_email_response_data(
                     uid=102,
-                    headers={"Subject": "Email 2", "From": "sender@example.com", "To": "recipient@example.com"}
+                    headers={
+                        "Subject": "Email 2",
+                        "From": "sender@example.com",
+                        "To": "recipient@example.com",
+                    },
                 ),
             }
             mock_imap_client.fetch.return_value = response_data
@@ -711,13 +775,19 @@ class TestImapClient:
             client.connect()
 
             # Fetch emails with limit
-            emails = client.fetch_emails([101, 102, 103, 104, 105], folder="INBOX", limit=2)
+            emails = client.fetch_emails(
+                [101, 102, 103, 104, 105], folder="INBOX", limit=2
+            )
 
             # Verify select_folder was called with readonly=True
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=True)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=True
+            )
 
             # Verify fetch was called with correct parameters (only first 2 UIDs)
-            mock_imap_client.fetch.assert_called_once_with([101, 102], ["BODY.PEEK[]", "FLAGS"])
+            mock_imap_client.fetch.assert_called_once_with(
+                [101, 102], ["BODY.PEEK[]", "FLAGS"]
+            )
 
             # Verify result contains only limited emails
             assert len(emails) == 2
@@ -748,7 +818,9 @@ class TestImapClient:
             result = client.mark_email(12345, folder="INBOX", flag=r"\Seen", value=True)
 
             # Verify select_folder was called with readonly=False for modifying flags
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=False)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=False
+            )
 
             # Verify add_flags was called with correct parameters
             mock_imap_client.add_flags.assert_called_once_with([12345], r"\Seen")
@@ -761,10 +833,14 @@ class TestImapClient:
             mock_imap_client.add_flags.reset_mock()
 
             # Mark email as not seen
-            result = client.mark_email(12345, folder="INBOX", flag=r"\Seen", value=False)
+            result = client.mark_email(
+                12345, folder="INBOX", flag=r"\Seen", value=False
+            )
 
             # Verify select_folder was called with readonly=False
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=False)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=False
+            )
 
             # Verify remove_flags was called with correct parameters
             mock_imap_client.remove_flags.assert_called_once_with([12345], r"\Seen")
@@ -797,7 +873,9 @@ class TestImapClient:
             result = client.mark_email(12345, folder="INBOX", flag=r"\Seen", value=True)
 
             # Verify select_folder was called with readonly=False
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=False)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=False
+            )
 
             # Verify add_flags was called with correct parameters
             mock_imap_client.add_flags.assert_called_once_with([12345], r"\Seen")
@@ -826,10 +904,14 @@ class TestImapClient:
             client.connect()
 
             # Move email
-            result = client.move_email(12345, source_folder="INBOX", target_folder="Archive")
+            result = client.move_email(
+                12345, source_folder="INBOX", target_folder="Archive"
+            )
 
             # Verify select_folder was called with readonly=False for modifying emails
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=False)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=False
+            )
 
             # Verify copy was called with correct parameters
             mock_imap_client.copy.assert_called_once_with([12345], "Archive")
@@ -865,10 +947,14 @@ class TestImapClient:
             client.connect()
 
             # Move email between allowed folders should succeed
-            result = client.move_email(12345, source_folder="INBOX", target_folder="Archive")
+            result = client.move_email(
+                12345, source_folder="INBOX", target_folder="Archive"
+            )
 
             # Verify operations were called
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=False)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=False
+            )
             mock_imap_client.copy.assert_called_once()
 
             # Verify result is success
@@ -1012,7 +1098,9 @@ class TestImapClient:
         with pytest.raises(ValueError, match="maximum length"):
             client._validate_folder_name("A" * 256)
 
-    def test_select_folder_rejects_injection_characters(self, mock_imap_client: MagicMock) -> None:
+    def test_select_folder_rejects_injection_characters(
+        self, mock_imap_client: MagicMock
+    ) -> None:
         """Test that select_folder rejects folder names with injection characters."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1033,7 +1121,9 @@ class TestImapClient:
             # imapclient.select_folder must never be called
             mock_imap_client.select_folder.assert_not_called()
 
-    def test_move_email_rejects_injection_in_target_folder(self, mock_imap_client: MagicMock) -> None:
+    def test_move_email_rejects_injection_in_target_folder(
+        self, mock_imap_client: MagicMock
+    ) -> None:
         """Test that move_email rejects injection characters in target folder.
 
         Critical: target_folder bypasses select_folder() and goes
@@ -1053,12 +1143,14 @@ class TestImapClient:
             client.connect()
 
             with pytest.raises(ValueError, match="invalid characters"):
-                client.move_email(12345, "INBOX", 'Trash{100}\r\nDELETE')
+                client.move_email(12345, "INBOX", "Trash{100}\r\nDELETE")
 
             mock_imap_client.select_folder.assert_not_called()
             mock_imap_client.copy.assert_not_called()
 
-    def test_move_email_rejects_injection_in_source_folder(self, mock_imap_client: MagicMock) -> None:
+    def test_move_email_rejects_injection_in_source_folder(
+        self, mock_imap_client: MagicMock
+    ) -> None:
         """Test that move_email rejects injection characters in source folder."""
         config = ImapConfig(
             host="imap.example.com",
@@ -1079,7 +1171,9 @@ class TestImapClient:
             mock_imap_client.select_folder.assert_not_called()
             mock_imap_client.copy.assert_not_called()
 
-    def test_validation_before_allowed_folders_check(self, mock_imap_client: MagicMock) -> None:
+    def test_validation_before_allowed_folders_check(
+        self, mock_imap_client: MagicMock
+    ) -> None:
         """Test that character validation runs before the allowed_folders check.
 
         Injection characters should be rejected first, even if the folder
@@ -1125,10 +1219,14 @@ class TestImapClient:
             client.connect()
 
             # Move email should fail but not raise exception
-            result = client.move_email(12345, source_folder="INBOX", target_folder="Archive")
+            result = client.move_email(
+                12345, source_folder="INBOX", target_folder="Archive"
+            )
 
             # Verify select_folder was called with readonly=False
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=False)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=False
+            )
 
             # Verify copy was called with correct parameters
             mock_imap_client.copy.assert_called_once_with([12345], "Archive")
@@ -1160,7 +1258,9 @@ class TestImapClient:
             result = client.delete_email(12345, folder="INBOX")
 
             # Verify select_folder was called with readonly=False
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=False)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=False
+            )
 
             # Verify add_flags was called to mark as deleted
             mock_imap_client.add_flags.assert_called_once_with([12345], r"\Deleted")
@@ -1196,7 +1296,9 @@ class TestImapClient:
             result = client.delete_email(12345, folder="INBOX")
 
             # Verify select_folder was called with readonly=False
-            mock_imap_client.select_folder.assert_called_once_with("INBOX", readonly=False)
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=False
+            )
 
             # Verify add_flags was called
             mock_imap_client.add_flags.assert_called_once_with([12345], r"\Deleted")

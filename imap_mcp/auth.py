@@ -48,9 +48,7 @@ def _validate_issuer_url(issuer_url: str) -> None:
             "Set OIDC_ALLOW_HTTP=true for local development."
         )
 
-    raise ValueError(
-        f"OIDC issuer URL must be a valid HTTP(S) URL: {issuer_url}"
-    )
+    raise ValueError(f"OIDC issuer URL must be a valid HTTP(S) URL: {issuer_url}")
 
 
 class JWKSKeyManager:

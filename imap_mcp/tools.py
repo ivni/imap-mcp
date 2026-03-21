@@ -157,7 +157,9 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         return generate_meeting_reply_content(invite_details, availability)
 
     @mcp.tool()
-    async def identify_meeting_invite_tool(folder: str, uid: int, ctx: Context) -> Dict[str, Any]:
+    async def identify_meeting_invite_tool(
+        folder: str, uid: int, ctx: Context
+    ) -> Dict[str, Any]:
         """Identifies if an email is a meeting invite and extracts relevant details.
 
         Args:
@@ -176,11 +178,17 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             return {"is_invite": False, "details": {}, "error": error}
         email_obj = client.fetch_email(uid, folder)
         if not email_obj:
-            return {"is_invite": False, "details": {}, "error": f"Email UID {uid} not found"}
+            return {
+                "is_invite": False,
+                "details": {},
+                "error": f"Email UID {uid} not found",
+            }
         return identify_meeting_invite_details(email_obj)
 
     @mcp.tool()
-    async def check_calendar_availability_tool(start_time: str, end_time: str, ctx: Context) -> Dict[str, Any]:
+    async def check_calendar_availability_tool(
+        start_time: str, end_time: str, ctx: Context
+    ) -> Dict[str, Any]:
         """Checks calendar availability for a given time slot.
 
         Args:
@@ -224,8 +232,14 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         confirmation = await require_confirmation(ctx, "save draft reply", folder, uid)
         if confirmation != ConfirmationResult.CONFIRMED:
             if confirmation == ConfirmationResult.ERROR:
-                return {"status": "error", "message": "Confirmation system error for save draft reply"}
-            return {"status": "cancelled", "message": "Draft reply not confirmed by user"}
+                return {
+                    "status": "error",
+                    "message": "Confirmation system error for save draft reply",
+                }
+            return {
+                "status": "cancelled",
+                "message": "Draft reply not confirmed by user",
+            }
 
         from imap_mcp.smtp_client import create_reply_mime
 
@@ -235,7 +249,10 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             return {"status": "error", "message": error}
         email_obj = client.fetch_email(uid, folder)
         if not email_obj:
-            return {"status": "error", "message": f"Email UID {uid} not found in {folder}"}
+            return {
+                "status": "error",
+                "message": f"Email UID {uid} not found in {folder}",
+            }
 
         # Determine sender for the reply
         reply_from = EmailAddress(name="", address=client.config.username)
@@ -286,7 +303,9 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         Returns:
             Success message or error message
         """
-        confirmation = await require_confirmation(ctx, "move", folder, uid, target_folder=target_folder)
+        confirmation = await require_confirmation(
+            ctx, "move", folder, uid, target_folder=target_folder
+        )
         if confirmation != ConfirmationResult.CONFIRMED:
             if confirmation == ConfirmationResult.ERROR:
                 return "Action aborted: confirmation system error for move"
@@ -505,24 +524,25 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
 
                     # Create summaries
                     for uid, email_obj in emails.items():
-                        results.append({
-                            "uid": uid,
-                            "folder": current_folder,
-                            "from": str(email_obj.from_),
-                            "to": [str(to) for to in email_obj.to],
-                            "subject": email_obj.subject,
-                            "date": email_obj.date.isoformat() if email_obj.date else None,
-                            "flags": email_obj.flags,
-                            "has_attachments": len(email_obj.attachments) > 0,
-                        })
+                        results.append(
+                            {
+                                "uid": uid,
+                                "folder": current_folder,
+                                "from": str(email_obj.from_),
+                                "to": [str(to) for to in email_obj.to],
+                                "subject": email_obj.subject,
+                                "date": email_obj.date.isoformat()
+                                if email_obj.date
+                                else None,
+                                "flags": email_obj.flags,
+                                "has_attachments": len(email_obj.attachments) > 0,
+                            }
+                        )
             except Exception as e:
                 logger.warning(f"Error searching folder {current_folder}: {e}")
 
         # Sort results by date (newest first)
-        results.sort(
-            key=lambda x: str(x.get("date") or "0"),
-            reverse=True
-        )
+        results.sort(key=lambda x: str(x.get("date") or "0"), reverse=True)
 
         # Apply global limit
         results = results[:limit]
@@ -560,7 +580,10 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         destructive_actions = {"delete", "move"}
         if action.lower() in destructive_actions:
             confirmation = await require_confirmation(
-                ctx, action.lower(), folder, uid,
+                ctx,
+                action.lower(),
+                folder,
+                uid,
                 target_folder=target_folder if action.lower() == "move" else None,
             )
             if confirmation != ConfirmationResult.CONFIRMED:
@@ -666,7 +689,9 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
               - draft_folder: Folder where the draft was saved (if successful)
               - availability: Whether the time slot was available
         """
-        confirmation = await require_confirmation(ctx, "process meeting invite and save draft", folder, uid)
+        confirmation = await require_confirmation(
+            ctx, "process meeting invite and save draft", folder, uid
+        )
         if confirmation != ConfirmationResult.CONFIRMED:
             if confirmation == ConfirmationResult.ERROR:
                 status = "error"
@@ -702,7 +727,7 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             "message": "An error occurred during processing",
             "draft_uid": None,
             "draft_folder": None,
-            "availability": None
+            "availability": None,
         }
 
         try:
@@ -715,7 +740,11 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                 return result
 
             # Step 2: Identify if it's a meeting invite
-            logger.info("Analyzing email UID %d in folder %s for meeting invite details", uid, folder)
+            logger.info(
+                "Analyzing email UID %d in folder %s for meeting invite details",
+                uid,
+                folder,
+            )
             invite_result = identify_meeting_invite_details(email_obj)
 
             if not invite_result["is_invite"]:
@@ -730,14 +759,18 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             availability_result = check_mock_availability(
                 invite_details.get("start_time"),
                 invite_details.get("end_time"),
-                availability_mode
+                availability_mode,
             )
 
             result["availability"] = availability_result["available"]
 
             # Step 4: Generate reply content
-            logger.info(f"Generating {'accept' if availability_result['available'] else 'decline'} reply")
-            reply_content = generate_meeting_reply_content(invite_details, availability_result)
+            logger.info(
+                f"Generating {'accept' if availability_result['available'] else 'decline'} reply"
+            )
+            reply_content = generate_meeting_reply_content(
+                invite_details, availability_result
+            )
 
             # Step 5: Create MIME message for reply
             logger.info("Creating MIME message for reply")
@@ -751,7 +784,7 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                 body=reply_content["reply_body"],
                 subject=reply_content["reply_subject"],
                 # Don't use reply_all for meeting responses
-                reply_all=False
+                reply_all=False,
             )
 
             # Step 6: Save as draft
@@ -761,10 +794,14 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             if draft_uid:
                 drafts_folder = client._get_drafts_folder()
                 result["status"] = "success"
-                result["message"] = f"Draft reply created: {reply_content['reply_type']}"
+                result["message"] = (
+                    f"Draft reply created: {reply_content['reply_type']}"
+                )
                 result["draft_uid"] = draft_uid
                 result["draft_folder"] = drafts_folder
-                logger.info(f"Draft saved successfully with UID {draft_uid} in folder {drafts_folder}")
+                logger.info(
+                    f"Draft saved successfully with UID {draft_uid} in folder {drafts_folder}"
+                )
             else:
                 result["message"] = "Failed to save draft"
 

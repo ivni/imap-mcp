@@ -43,7 +43,9 @@ def verify_smtp_connection(config: SmtpConfig) -> bool:
         else:
             # Port 465 — implicit SSL
             server = smtplib.SMTP_SSL(
-                config.host, config.port, timeout=10,
+                config.host,
+                config.port,
+                timeout=10,
                 context=ctx,
             )
             server.ehlo()
@@ -93,10 +95,13 @@ def create_reply_mime(
     to_recipients = [original_email.from_]
     if reply_all and original_email.to:
         # Add original recipients excluding the sender
-        to_recipients.extend([
-            recipient for recipient in original_email.to
-            if recipient.address != reply_to.address
-        ])
+        to_recipients.extend(
+            [
+                recipient
+                for recipient in original_email.to
+                if recipient.address != reply_to.address
+            ]
+        )
 
     message["To"] = ", ".join(str(recipient) for recipient in to_recipients)
 
@@ -105,10 +110,13 @@ def create_reply_mime(
     if cc:
         cc_recipients.extend(cc)
     elif reply_all and original_email.cc:
-        cc_recipients.extend([
-            recipient for recipient in original_email.cc
-            if recipient.address != reply_to.address
-        ])
+        cc_recipients.extend(
+            [
+                recipient
+                for recipient in original_email.cc
+                if recipient.address != reply_to.address
+            ]
+        )
 
     if cc_recipients:
         message["Cc"] = ", ".join(str(recipient) for recipient in cc_recipients)
@@ -147,7 +155,9 @@ def create_reply_mime(
         plain_text = body
         if original_email.content.text:
             # Quote original plain text
-            quoted_original = "\n".join(f"> {line}" for line in original_email.content.text.split("\n"))
+            quoted_original = "\n".join(
+                f"> {line}" for line in original_email.content.text.split("\n")
+            )
             plain_text += f"\n\nOn {email.utils.format_datetime(original_email.date or datetime.now())}, {original_email.from_} wrote:\n{quoted_original}"
 
         text_part = MIMEText(plain_text, "plain", "utf-8")
@@ -159,11 +169,11 @@ def create_reply_mime(
             # Add original HTML with a divider
             html_content += (
                 f'\n<div style="border-top: 1px solid #ccc; margin-top: 20px; padding-top: 10px;">'
-                f'\n<p>On {email.utils.format_datetime(original_email.date or datetime.now())}, {original_email.from_} wrote:</p>'
+                f"\n<p>On {email.utils.format_datetime(original_email.date or datetime.now())}, {original_email.from_} wrote:</p>"
                 f'\n<blockquote style="margin: 0 0 0 .8ex; border-left: 1px solid #ccc; padding-left: 1ex;">'
-                f'\n{original_email.content.html}'
-                f'\n</blockquote>'
-                f'\n</div>'
+                f"\n{original_email.content.html}"
+                f"\n</blockquote>"
+                f"\n</div>"
             )
         else:
             # Convert plain text to HTML for quoting
@@ -173,11 +183,11 @@ def create_reply_mime(
                 escaped_text = escaped_text.replace("\n", "<br>")
                 html_content += (
                     f'\n<div style="border-top: 1px solid #ccc; margin-top: 20px; padding-top: 10px;">'
-                    f'\n<p>On {email.utils.format_datetime(original_email.date or datetime.now())}, {original_email.from_} wrote:</p>'
+                    f"\n<p>On {email.utils.format_datetime(original_email.date or datetime.now())}, {original_email.from_} wrote:</p>"
                     f'\n<blockquote style="margin: 0 0 0 .8ex; border-left: 1px solid #ccc; padding-left: 1ex;">'
-                    f'\n{escaped_text}'
-                    f'\n</blockquote>'
-                    f'\n</div>'
+                    f"\n{escaped_text}"
+                    f"\n</blockquote>"
+                    f"\n</div>"
                 )
 
         html_part = MIMEText(html_content, "html", "utf-8")
@@ -190,7 +200,9 @@ def create_reply_mime(
         plain_text = body
         if original_email.content.text:
             # Quote original plain text
-            quoted_original = "\n".join(f"> {line}" for line in original_email.content.text.split("\n"))
+            quoted_original = "\n".join(
+                f"> {line}" for line in original_email.content.text.split("\n")
+            )
             plain_text += f"\n\nOn {email.utils.format_datetime(original_email.date or datetime.now())}, {original_email.from_} wrote:\n{quoted_original}"
 
         assert isinstance(message, EmailMessage)

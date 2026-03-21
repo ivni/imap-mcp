@@ -29,17 +29,21 @@ except ImportError:
     class Envelope:  # type: ignore[no-redef]
         pass
 
+
 try:
     from dotenv import load_dotenv
 except ImportError:
+
     def load_dotenv(x: object = None) -> Any:
         return None
+
 
 from imap_mcp.models import Email, EmailAddress, EmailContent
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     """Add command-line options to pytest."""
@@ -58,10 +62,14 @@ def pytest_configure(config: pytest.Config) -> None:
     )
 
 
-def pytest_collection_modifyitems(config: pytest.Config, items: List[pytest.Item]) -> None:
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: List[pytest.Item]
+) -> None:
     """Skip integration tests if --skip-integration is provided."""
     if config.getoption("--skip-integration"):
-        skip_integration = pytest.mark.skip(reason="Integration tests skipped with --skip-integration")
+        skip_integration = pytest.mark.skip(
+            reason="Integration tests skipped with --skip-integration"
+        )
         for item in items:
             if "integration" in item.keywords:
                 item.add_marker(skip_integration)
@@ -163,6 +171,7 @@ def test_email_message_encoded_headers() -> MIMEMultipart:
 @pytest.fixture
 def make_test_email_message() -> Callable[..., MIMEMultipart]:
     """Factory fixture to create customized test email messages."""
+
     def _make_test_email_message(
         from_addr: str = "sender@example.com",
         from_name: str = "Test Sender",
@@ -172,7 +181,9 @@ def make_test_email_message() -> Callable[..., MIMEMultipart]:
         subject: str = "Test Email",
         body_text: str = "This is a test email.",
         body_html: Optional[str] = None,
-        attachments: List[Tuple[str, bytes, str]] = [],  # [(filename, content, content_type)]
+        attachments: List[
+            Tuple[str, bytes, str]
+        ] = [],  # [(filename, content, content_type)]
         date: Optional[datetime.datetime] = None,
         message_id: Optional[str] = None,
         headers: Dict[str, str] = {},
@@ -201,12 +212,18 @@ def make_test_email_message() -> Callable[..., MIMEMultipart]:
 
         # Add basic headers
         msg["From"] = f"{from_name} <{from_addr}>" if from_name else from_addr
-        msg["To"] = ", ".join(f"{name} <{addr}>" if name else addr for addr, name in to_addrs)
+        msg["To"] = ", ".join(
+            f"{name} <{addr}>" if name else addr for addr, name in to_addrs
+        )
 
         if cc_addrs:
-            msg["Cc"] = ", ".join(f"{name} <{addr}>" if name else addr for addr, name in cc_addrs)
+            msg["Cc"] = ", ".join(
+                f"{name} <{addr}>" if name else addr for addr, name in cc_addrs
+            )
         if bcc_addrs:
-            msg["Bcc"] = ", ".join(f"{name} <{addr}>" if name else addr for addr, name in bcc_addrs)
+            msg["Bcc"] = ", ".join(
+                f"{name} <{addr}>" if name else addr for addr, name in bcc_addrs
+            )
 
         msg["Subject"] = subject
 
@@ -240,7 +257,9 @@ def make_test_email_message() -> Callable[..., MIMEMultipart]:
             # Add attachments
             for filename, content, content_type in attachments:
                 attachment = MIMEApplication(content)
-                attachment.add_header("Content-Disposition", "attachment", filename=filename)
+                attachment.add_header(
+                    "Content-Disposition", "attachment", filename=filename
+                )
                 attachment.add_header("Content-Type", content_type)
                 msg.attach(attachment)
 
@@ -263,13 +282,14 @@ This is a test email body.
 """,
         b"FLAGS": (b"\\Seen",),
         b"UID": 12345,
-        b"INTERNALDATE": "01-Jan-2023 12:00:00 +0000"
+        b"INTERNALDATE": "01-Jan-2023 12:00:00 +0000",
     }
 
 
 @pytest.fixture
 def make_test_email_response_data() -> Callable[..., Dict[bytes, Any]]:
     """Factory fixture to create customized IMAP email response data."""
+
     def _make_response_data(
         uid: int = 12345,
         flags: Tuple[bytes, ...] = (b"\\Seen",),
@@ -280,9 +300,9 @@ def make_test_email_response_data() -> Callable[..., Dict[bytes, Any]]:
             "To": "Test Recipient <recipient@example.com>",
             "Subject": "Test Email",
             "Date": "Thu, 01 Jan 2023 12:00:00 +0000",
-            "Message-ID": "<test-123@example.com>"
+            "Message-ID": "<test-123@example.com>",
         },
-        body_text: str = "This is a test email body."
+        body_text: str = "This is a test email body.",
     ) -> Dict[bytes, Any]:
         """Create customized IMAP response data for testing."""
         if body is None:
@@ -295,7 +315,7 @@ def make_test_email_response_data() -> Callable[..., Dict[bytes, Any]]:
             b"BODY[]": body,
             b"FLAGS": flags,
             b"UID": uid,
-            b"INTERNALDATE": internal_date
+            b"INTERNALDATE": internal_date,
         }
 
     return _make_response_data
@@ -312,7 +332,7 @@ def test_email_model() -> Email:
         date=datetime.datetime(2023, 1, 1, 12, 0, 0),
         content=EmailContent(text="This is a test email body."),
         folder="INBOX",
-        uid=12345
+        uid=12345,
     )
 
 

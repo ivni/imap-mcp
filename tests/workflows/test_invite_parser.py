@@ -36,7 +36,7 @@ class TestInviteParser:
                     "Project review meeting to discuss progress."
                 )
             ),
-            headers={"Content-Type": "text/calendar; method=REQUEST"}
+            headers={"Content-Type": "text/calendar; method=REQUEST"},
         )
 
     @pytest.fixture
@@ -51,15 +51,13 @@ class TestInviteParser:
             content=EmailContent(
                 text="Weekly team sync meeting.\nPlease review the agenda."
             ),
-            headers={}
+            headers={},
         )
 
         # Add calendar attachment
         email.attachments = [
             EmailAttachment(
-                filename="invite.ics",
-                content_type="text/calendar",
-                size=1024
+                filename="invite.ics", content_type="text/calendar", size=1024
             )
         ]
 
@@ -82,7 +80,7 @@ class TestInviteParser:
                     "Please prepare by reviewing the materials."
                 )
             ),
-            headers={}
+            headers={},
         )
 
     @pytest.fixture
@@ -97,7 +95,7 @@ class TestInviteParser:
             content=EmailContent(
                 text="Please find attached the weekly report.\nLet me know if you have questions."
             ),
-            headers={}
+            headers={},
         )
 
     @pytest.fixture
@@ -112,7 +110,7 @@ class TestInviteParser:
             content=EmailContent(
                 text="I wanted to follow up on our discussion in yesterday's meeting.\nLet's schedule a call next week."
             ),
-            headers={}
+            headers={},
         )
 
     def test_identify_meeting_invite_by_subject(self, basic_invite_email: Any) -> None:
@@ -122,14 +120,18 @@ class TestInviteParser:
         assert "subject" in result["details"]
         assert result["details"]["subject"] == "Project Review"
 
-    def test_identify_meeting_invite_by_attachment(self, calendar_attachment_invite_email: Any) -> None:
+    def test_identify_meeting_invite_by_attachment(
+        self, calendar_attachment_invite_email: Any
+    ) -> None:
         """Test identifying meeting invite by calendar attachment."""
         result = identify_meeting_invite_details(calendar_attachment_invite_email)
         assert result["is_invite"] is True
         assert "subject" in result["details"]
         assert result["details"]["subject"] == "Team Sync"
 
-    def test_identify_meeting_invite_by_content(self, online_meeting_invite_email: Any) -> None:
+    def test_identify_meeting_invite_by_content(
+        self, online_meeting_invite_email: Any
+    ) -> None:
         """Test identifying meeting invite by content patterns."""
         result = identify_meeting_invite_details(online_meeting_invite_email)
         assert result["is_invite"] is True
@@ -166,10 +168,12 @@ class TestInviteParser:
         # Check expected time values
         assert start_time.hour == 14  # 2 PM
         assert start_time.minute == 0
-        assert end_time.hour == 15    # 3 PM
+        assert end_time.hour == 15  # 3 PM
         assert end_time.minute == 0
 
-    def test_extract_meeting_location(self, basic_invite_email: Any, online_meeting_invite_email: Any) -> None:
+    def test_extract_meeting_location(
+        self, basic_invite_email: Any, online_meeting_invite_email: Any
+    ) -> None:
         """Test extracting meeting location for physical and online meetings."""
         # Physical location
         location1 = _extract_location(basic_invite_email)
@@ -195,7 +199,7 @@ class TestInviteParser:
             content=EmailContent(
                 text="Let's have a quick meeting to discuss the project."
             ),
-            headers={}
+            headers={},
         )
 
         result = identify_meeting_invite_details(email)

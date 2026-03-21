@@ -115,29 +115,25 @@ class TestImapClientThreading(unittest.TestCase):
                 # Create the appropriate MIME part based on content type
                 if main_type == "image":
                     att_part = email.mime.image.MIMEImage(
-                        attachment["content"],
-                        _subtype=sub_type
+                        attachment["content"], _subtype=sub_type
                     )
                 elif main_type == "application":
                     att_part = email.mime.application.MIMEApplication(
-                        attachment["content"],
-                        _subtype=sub_type
+                        attachment["content"], _subtype=sub_type
                     )
                 elif main_type == "audio":
                     att_part = email.mime.audio.MIMEAudio(
-                        attachment["content"],
-                        _subtype=sub_type
+                        attachment["content"], _subtype=sub_type
                     )
                 else:
                     # Default to application
                     att_part = email.mime.application.MIMEApplication(
-                        attachment["content"],
-                        _subtype=sub_type
+                        attachment["content"], _subtype=sub_type
                     )
 
                 att_part.add_header(
                     "Content-Disposition",
-                    f"attachment; filename=\"{attachment['filename']}\""
+                    f'attachment; filename="{attachment["filename"]}"',
                 )
                 if attachment.get("content_id"):
                     att_part.add_header("Content-ID", f"<{attachment['content_id']}>")
@@ -148,10 +144,7 @@ class TestImapClientThreading(unittest.TestCase):
                 msg.attach(att_part)
 
         # Mock IMAP response format
-        return {
-            b"BODY[]": msg.as_bytes(),
-            b"FLAGS": (b"\\Seen",)
-        }
+        return {b"BODY[]": msg.as_bytes(), b"FLAGS": (b"\\Seen",)}
 
     def test_fetch_email_with_all_body_parts(self) -> None:
         """Test that fetch_email retrieves all body parts correctly."""
@@ -170,7 +163,7 @@ class TestImapClientThreading(unittest.TestCase):
             to="recipient@example.com",
             date=datetime.now(),
             body_text=text_content,
-            body_html=html_content
+            body_html=html_content,
         )
 
         self.mock_client.fetch.return_value = {uid: mock_email}
@@ -200,27 +193,32 @@ class TestImapClientThreading(unittest.TestCase):
         )
 
         # Add text part
-        text_part = email.mime.text.MIMEText("Please see attached files", "plain", "utf-8")
+        text_part = email.mime.text.MIMEText(
+            "Please see attached files", "plain", "utf-8"
+        )
         msg.attach(text_part)
 
         # Add PDF attachment
-        pdf_attachment = email.mime.application.MIMEApplication(b"PDF content", _subtype="pdf")
-        pdf_attachment.add_header("Content-Disposition", 'attachment; filename="document.pdf"')
+        pdf_attachment = email.mime.application.MIMEApplication(
+            b"PDF content", _subtype="pdf"
+        )
+        pdf_attachment.add_header(
+            "Content-Disposition", 'attachment; filename="document.pdf"'
+        )
         pdf_attachment.add_header("Content-ID", "<pdf1>")
         pdf_attachment.replace_header("Content-Type", "application/pdf")
         msg.attach(pdf_attachment)
 
         # Add JPEG attachment
         jpg_attachment = email.mime.image.MIMEImage(b"Image data", _subtype="jpeg")
-        jpg_attachment.add_header("Content-Disposition", 'attachment; filename="image.jpg"')
+        jpg_attachment.add_header(
+            "Content-Disposition", 'attachment; filename="image.jpg"'
+        )
         jpg_attachment.replace_header("Content-Type", "image/jpeg")
         msg.attach(jpg_attachment)
 
         # Set up mock response
-        mock_email = {
-            b"BODY[]": msg.as_bytes(),
-            b"FLAGS": (b"\\Seen",)
-        }
+        mock_email = {b"BODY[]": msg.as_bytes(), b"FLAGS": (b"\\Seen",)}
 
         self.mock_client.fetch.return_value = {uid: mock_email}
 
@@ -232,8 +230,12 @@ class TestImapClientThreading(unittest.TestCase):
         assert len(email_obj.attachments) == 2
 
         # Find each attachment by filename
-        pdf_attachment = next((a for a in email_obj.attachments if a.filename == "document.pdf"), None)
-        jpg_attachment = next((a for a in email_obj.attachments if a.filename == "image.jpg"), None)
+        pdf_attachment = next(
+            (a for a in email_obj.attachments if a.filename == "document.pdf"), None
+        )
+        jpg_attachment = next(
+            (a for a in email_obj.attachments if a.filename == "image.jpg"), None
+        )
 
         # Check first attachment
         assert pdf_attachment is not None
@@ -266,8 +268,10 @@ class TestImapClientThreading(unittest.TestCase):
             "From": "person1@example.com",
             "To": "person2@example.com",
             "Date": email.utils.formatdate(
-                (datetime.now() - timedelta(hours=2) - datetime(1970, 1, 1)).total_seconds()
-            )
+                (
+                    datetime.now() - timedelta(hours=2) - datetime(1970, 1, 1)
+                ).total_seconds()
+            ),
         }
 
         reply1_headers = {
@@ -276,10 +280,12 @@ class TestImapClientThreading(unittest.TestCase):
             "From": "person2@example.com",
             "To": "person1@example.com",
             "Date": email.utils.formatdate(
-                (datetime.now() - timedelta(hours=1) - datetime(1970, 1, 1)).total_seconds()
+                (
+                    datetime.now() - timedelta(hours=1) - datetime(1970, 1, 1)
+                ).total_seconds()
             ),
             "In-Reply-To": initial_message_id,
-            "References": initial_message_id
+            "References": initial_message_id,
         }
 
         reply2_headers = {
@@ -291,7 +297,7 @@ class TestImapClientThreading(unittest.TestCase):
                 (datetime.now() - datetime(1970, 1, 1)).total_seconds()
             ),
             "In-Reply-To": reply1_message_id,
-            "References": f"{initial_message_id} {reply1_message_id}"
+            "References": f"{initial_message_id} {reply1_message_id}",
         }
 
         # Create the email messages with proper headers
@@ -319,20 +325,11 @@ class TestImapClientThreading(unittest.TestCase):
         reply2_msg.attach(reply2_text)
 
         # Create the mock responses
-        initial_email = {
-            b"BODY[]": initial_msg.as_bytes(),
-            b"FLAGS": (b"\\Seen",)
-        }
+        initial_email = {b"BODY[]": initial_msg.as_bytes(), b"FLAGS": (b"\\Seen",)}
 
-        reply1_email = {
-            b"BODY[]": reply1_msg.as_bytes(),
-            b"FLAGS": (b"\\Seen",)
-        }
+        reply1_email = {b"BODY[]": reply1_msg.as_bytes(), b"FLAGS": (b"\\Seen",)}
 
-        reply2_email = {
-            b"BODY[]": reply2_msg.as_bytes(),
-            b"FLAGS": (b"\\Seen",)
-        }
+        reply2_email = {b"BODY[]": reply2_msg.as_bytes(), b"FLAGS": (b"\\Seen",)}
 
         # Configure mocks
         self.mock_client.fetch.side_effect = [
@@ -342,8 +339,8 @@ class TestImapClientThreading(unittest.TestCase):
             {
                 initial_uid: initial_email,
                 reply1_uid: reply1_email,
-                reply2_uid: reply2_email
-            }
+                reply2_uid: reply2_email,
+            },
         ]
 
         # Mock search results
@@ -391,7 +388,7 @@ class TestImapClientThreading(unittest.TestCase):
             sender="person1@example.com",
             to="person2@example.com",
             date=datetime.now() - timedelta(hours=1),
-            body_text="Initial message"
+            body_text="Initial message",
         )
 
         reply_email = self.create_mock_email(
@@ -401,7 +398,7 @@ class TestImapClientThreading(unittest.TestCase):
             sender="person2@example.com",
             to="person1@example.com",
             date=datetime.now(),
-            body_text="Reply message"
+            body_text="Reply message",
             # No In-Reply-To or References headers
         )
 
@@ -410,10 +407,7 @@ class TestImapClientThreading(unittest.TestCase):
             # First fetch for the initial email
             {initial_uid: initial_email},
             # Later fetch for all thread emails
-            {
-                initial_uid: initial_email,
-                reply_uid: reply_email
-            }
+            {initial_uid: initial_email, reply_uid: reply_email},
         ]
 
         # Mock search results - empty for header searches, results for subject search
@@ -425,7 +419,7 @@ class TestImapClientThreading(unittest.TestCase):
             # Results for In-Reply-To search
             SearchIds([]),
             # Results for Subject search
-            SearchIds([reply_uid])
+            SearchIds([reply_uid]),
         ]
 
         # Call method being tested
@@ -451,7 +445,7 @@ class TestImapClientThreading(unittest.TestCase):
             sender="person1@example.com",
             to="person2@example.com",
             date=datetime.now() - timedelta(hours=24),
-            body_text="Initial message"
+            body_text="Initial message",
         )
         mock_emails[initial_uid] = initial_email
 
@@ -463,10 +457,10 @@ class TestImapClientThreading(unittest.TestCase):
                 subject="Re: Large Thread",
                 sender="person2@example.com" if i % 2 else "person1@example.com",
                 to="person1@example.com" if i % 2 else "person2@example.com",
-                date=datetime.now() - timedelta(hours=24-i),
+                date=datetime.now() - timedelta(hours=24 - i),
                 body_text=f"Reply {i}",
-                in_reply_to=message_ids[i-1],
-                references=message_ids[:i]
+                in_reply_to=message_ids[i - 1],
+                references=message_ids[:i],
             )
             mock_emails[uids[i]] = reply_email
 
@@ -475,7 +469,7 @@ class TestImapClientThreading(unittest.TestCase):
             # First fetch for the initial email
             {initial_uid: initial_email},
             # Later fetch for all thread emails
-            mock_emails
+            mock_emails,
         ]
 
         # Mock search results - return all UIDs except the initial one
@@ -507,7 +501,7 @@ class TestImapClientThreading(unittest.TestCase):
             sender="person1@example.com",
             to="person2@example.com",
             date=datetime.now() - timedelta(hours=2),
-            body_text="Initial message"
+            body_text="Initial message",
         )
 
         # Skip reply1 (simulating inaccessible message)
@@ -521,7 +515,7 @@ class TestImapClientThreading(unittest.TestCase):
             date=datetime.now(),
             body_text="Second reply",
             in_reply_to=reply1_message_id,
-            references=[initial_message_id, reply1_message_id]
+            references=[initial_message_id, reply1_message_id],
         )
 
         # Configure mocks
@@ -531,9 +525,9 @@ class TestImapClientThreading(unittest.TestCase):
             # Later fetch for thread emails - missing reply1
             {
                 initial_uid: initial_email,
-                reply2_uid: reply2_email
+                reply2_uid: reply2_email,
                 # reply1_uid is missing
-            }
+            },
         ]
 
         # Mock search results
@@ -561,14 +555,12 @@ class TestImapClientThreading(unittest.TestCase):
             sender="sender@example.com",
             to="recipient@example.com",
             date=datetime.now() - timedelta(hours=1),
-            body_text="UTF-8 text with special chars: é, ñ, 你好"
+            body_text="UTF-8 text with special chars: é, ñ, 你好",
         )
 
         # Create a second email with Latin-1 encoding
         latin1_part = email.mime.text.MIMEText(
-            "Latin-1 text with special chars: é, ñ, ç",
-            "plain",
-            "latin-1"
+            "Latin-1 text with special chars: é, ñ, ç", "plain", "latin-1"
         )
 
         # Create full message
@@ -584,20 +576,14 @@ class TestImapClientThreading(unittest.TestCase):
         latin1_msg["References"] = "<encoding-test1@example.com>"
         latin1_msg.attach(latin1_part)
 
-        latin1_email = {
-            b"BODY[]": latin1_msg.as_bytes(),
-            b"FLAGS": (b"\\Seen",)
-        }
+        latin1_email = {b"BODY[]": latin1_msg.as_bytes(), b"FLAGS": (b"\\Seen",)}
 
         # Configure mocks
         self.mock_client.fetch.side_effect = [
             # First fetch for the initial email
             {uid1: utf8_email},
             # Later fetch for all thread emails
-            {
-                uid1: utf8_email,
-                uid2: latin1_email
-            }
+            {uid1: utf8_email, uid2: latin1_email},
         ]
 
         # Mock search results
@@ -666,8 +652,8 @@ class TestFetchThreadInjectionSafety(unittest.TestCase):
         }
 
         self.mock_client.fetch.side_effect = [
-            {uid: mock_email_data},   # fetch_email (initial)
-            {uid: mock_email_data},   # fetch_emails (thread result)
+            {uid: mock_email_data},  # fetch_email (initial)
+            {uid: mock_email_data},  # fetch_emails (thread result)
         ]
         self.mock_client.search.return_value = SearchIds([])
 
@@ -722,7 +708,9 @@ class TestImapClientVerifyConnection(unittest.TestCase):
         """Test connection verification failure raises ConnectionError."""
         self.mock_client.capabilities.side_effect = Exception("Connection lost")
 
-        with pytest.raises(ConnectionError, match="IMAP connection verification failed"):
+        with pytest.raises(
+            ConnectionError, match="IMAP connection verification failed"
+        ):
             self.imap_client.verify_connection()
 
         assert self.imap_client.connected is False

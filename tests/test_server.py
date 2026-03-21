@@ -27,9 +27,9 @@ class TestServer:
                 port=993,
                 username="test@example.com",
                 password="password",
-                use_ssl=True
+                use_ssl=True,
             ),
-            allowed_folders=["INBOX", "Sent"]
+            allowed_folders=["INBOX", "Sent"],
         )
 
         with mock.patch("imap_mcp.server.load_config", return_value=mock_config):
@@ -45,8 +45,12 @@ class TestServer:
             # Instead, we can verify that the returned server object is properly configured
 
             # Verify resources and tools were registered
-            with mock.patch("imap_mcp.server.register_resources") as mock_register_resources:
-                with mock.patch("imap_mcp.server.register_tools") as mock_register_tools:
+            with mock.patch(
+                "imap_mcp.server.register_resources"
+            ) as mock_register_resources:
+                with mock.patch(
+                    "imap_mcp.server.register_tools"
+                ) as mock_register_tools:
                     create_server()
                     assert mock_register_resources.called
                     assert mock_register_tools.called
@@ -86,7 +90,7 @@ class TestServer:
                 port=993,
                 username="test@example.com",
                 password="password",
-                use_ssl=True
+                use_ssl=True,
             )
         )
         mock_server._config = mock_config
@@ -101,7 +105,9 @@ class TestServer:
                 context = await stack.enter_async_context(server_lifespan(mock_server))
 
                 # Verify ImapClient was created with correct config
-                MockImapClient.assert_called_once_with(mock_config.imap, mock_config.allowed_folders)
+                MockImapClient.assert_called_once_with(
+                    mock_config.imap, mock_config.allowed_folders
+                )
 
                 # Verify connect and verify_connection were called
                 mock_client.connect.assert_called_once()
@@ -126,14 +132,15 @@ class TestServer:
                 port=993,
                 username="test@example.com",
                 password="password",
-                use_ssl=True
+                use_ssl=True,
             )
         )
 
         # Mock config loading and ImapClient
-        with mock.patch("imap_mcp.server.load_config", return_value=mock_config) as mock_load_config:
+        with mock.patch(
+            "imap_mcp.server.load_config", return_value=mock_config
+        ) as mock_load_config:
             with mock.patch("imap_mcp.server.ImapClient"):
-
                 async with AsyncExitStack() as stack:
                     await stack.enter_async_context(server_lifespan(mock_server))
 
@@ -168,16 +175,20 @@ class TestServer:
                 port=993,
                 username="test@example.com",
                 password="password",
-                use_ssl=True
+                use_ssl=True,
             ),
             smtp=smtp_config,
         )
         mock_server._config = mock_config
 
         with mock.patch("imap_mcp.server.ImapClient"):
-            with mock.patch("imap_mcp.server.verify_smtp_connection") as mock_verify_smtp:
+            with mock.patch(
+                "imap_mcp.server.verify_smtp_connection"
+            ) as mock_verify_smtp:
                 async with AsyncExitStack() as stack:
-                    context = await stack.enter_async_context(server_lifespan(mock_server))
+                    context = await stack.enter_async_context(
+                        server_lifespan(mock_server)
+                    )
 
                     assert "smtp_config" in context
                     assert context["smtp_config"] == smtp_config
@@ -194,7 +205,7 @@ class TestServer:
                 port=993,
                 username="test@example.com",
                 password="password",
-                use_ssl=True
+                use_ssl=True,
             ),
         )
         mock_server._config = mock_config
@@ -214,9 +225,9 @@ class TestServer:
                 port=993,
                 username="test@example.com",
                 password="password",
-                use_ssl=True
+                use_ssl=True,
             ),
-            allowed_folders=["INBOX", "Sent"]
+            allowed_folders=["INBOX", "Sent"],
         )
 
         # In the actual server implementation, server_status is defined as an inner function
@@ -232,6 +243,7 @@ class TestServer:
                 nonlocal captured_tool
                 captured_tool = func
                 return original_tool(self)(func)
+
             return decorator
 
         try:
@@ -281,7 +293,9 @@ class TestServer:
 
         with mock.patch("sys.argv", ["server.py"] + test_args):
             with mock.patch("imap_mcp.server.create_server") as mock_create_server:
-                with mock.patch("imap_mcp.server.argparse.ArgumentParser.parse_args") as mock_parse_args:
+                with mock.patch(
+                    "imap_mcp.server.argparse.ArgumentParser.parse_args"
+                ) as mock_parse_args:
                     # Mock the parsed arguments
                     mock_args = argparse.Namespace(
                         config="test_config.yaml",
@@ -325,7 +339,9 @@ class TestServer:
 
         with mock.patch("sys.argv", ["server.py"]):
             with mock.patch("imap_mcp.server.create_server") as mock_create_server:
-                with mock.patch("imap_mcp.server.argparse.ArgumentParser.parse_args") as mock_parse_args:
+                with mock.patch(
+                    "imap_mcp.server.argparse.ArgumentParser.parse_args"
+                ) as mock_parse_args:
                     # Mock the parsed arguments
                     mock_args = argparse.Namespace(
                         config="env_config.yaml",
@@ -353,7 +369,9 @@ class TestServer:
     def test_main_streamable_http_transport(self) -> None:
         """Test main function with streamable-http transport."""
         with mock.patch("imap_mcp.server.create_server") as mock_create_server:
-            with mock.patch("imap_mcp.server.argparse.ArgumentParser.parse_args") as mock_parse_args:
+            with mock.patch(
+                "imap_mcp.server.argparse.ArgumentParser.parse_args"
+            ) as mock_parse_args:
                 mock_args = argparse.Namespace(
                     config=None,
                     transport="streamable-http",
@@ -373,9 +391,7 @@ class TestServer:
                 mock_create_server.assert_called_once_with(
                     None, False, "streamable-http", "0.0.0.0", 8010
                 )
-                mock_server.run.assert_called_once_with(
-                    transport="streamable-http"
-                )
+                mock_server.run.assert_called_once_with(transport="streamable-http")
 
     def test_main_transport_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that transport settings are read from environment variables."""
@@ -393,13 +409,15 @@ class TestServer:
                 mock_create_server.assert_called_once_with(
                     None, False, "streamable-http", "0.0.0.0", 9000
                 )
-                mock_server.run.assert_called_once_with(
-                    transport="streamable-http"
-                )
+                mock_server.run.assert_called_once_with(transport="streamable-http")
 
-    def test_create_server_with_http_transport(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_create_server_with_http_transport(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test that host/port are passed to FastMCP for streamable-http."""
-        monkeypatch.setenv("OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/")
+        monkeypatch.setenv(
+            "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
+        )
         monkeypatch.setenv("OIDC_JWKS_URI", "https://auth.example.com/jwks/")
 
         mock_config = ServerConfig(
@@ -461,7 +479,9 @@ class TestServer:
 
         with mock.patch("imap_mcp.server.ImapClient") as MockImapClient:
             mock_client = MockImapClient.return_value
-            mock_client.verify_connection.side_effect = ConnectionError("Verification failed")
+            mock_client.verify_connection.side_effect = ConnectionError(
+                "Verification failed"
+            )
 
             with pytest.raises(ConnectionError, match="Verification failed"):
                 async with AsyncExitStack() as stack:
@@ -493,7 +513,9 @@ class TestServer:
         mock_server._config = mock_config
 
         with mock.patch("imap_mcp.server.ImapClient"):
-            with mock.patch("imap_mcp.server.verify_smtp_connection") as mock_verify_smtp:
+            with mock.patch(
+                "imap_mcp.server.verify_smtp_connection"
+            ) as mock_verify_smtp:
                 mock_verify_smtp.side_effect = ConnectionError("SMTP auth failed")
 
                 with mock.patch("imap_mcp.server.logger") as mock_logger:
@@ -556,30 +578,46 @@ class TestServerOIDCAuth:
 
     def test_oidc_auth_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that OIDC JWT auth is configured when OIDC_ISSUER_URL is set."""
-        monkeypatch.setenv("OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/")
+        monkeypatch.setenv(
+            "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
+        )
         monkeypatch.delenv("OIDC_JWKS_URI", raising=False)
 
-        with mock.patch("imap_mcp.server.load_config", return_value=self._mock_config()):
-            with mock.patch("imap_mcp.auth.discover_jwks_uri", return_value="https://auth.example.com/jwks/"):
+        with mock.patch(
+            "imap_mcp.server.load_config", return_value=self._mock_config()
+        ):
+            with mock.patch(
+                "imap_mcp.auth.discover_jwks_uri",
+                return_value="https://auth.example.com/jwks/",
+            ):
                 server = create_server(transport="streamable-http")
                 assert server._token_verifier is not None
                 from imap_mcp.auth import OIDCJWTVerifier
+
                 assert isinstance(server._token_verifier, OIDCJWTVerifier)
 
     def test_missing_issuer_raises_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that ValueError is raised when OIDC_ISSUER_URL is missing for HTTP."""
         monkeypatch.delenv("OIDC_ISSUER_URL", raising=False)
 
-        with mock.patch("imap_mcp.server.load_config", return_value=self._mock_config()):
+        with mock.patch(
+            "imap_mcp.server.load_config", return_value=self._mock_config()
+        ):
             with pytest.raises(ValueError, match="OIDC_ISSUER_URL is required"):
                 create_server(transport="streamable-http")
 
-    def test_discovery_failure_propagates_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_discovery_failure_propagates_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test that discovery failure raises ValueError when no explicit JWKS URI."""
-        monkeypatch.setenv("OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/")
+        monkeypatch.setenv(
+            "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
+        )
         monkeypatch.delenv("OIDC_JWKS_URI", raising=False)
 
-        with mock.patch("imap_mcp.server.load_config", return_value=self._mock_config()):
+        with mock.patch(
+            "imap_mcp.server.load_config", return_value=self._mock_config()
+        ):
             with mock.patch(
                 "imap_mcp.auth.discover_jwks_uri",
                 side_effect=ValueError("OIDC discovery failed"),
@@ -587,36 +625,61 @@ class TestServerOIDCAuth:
                 with pytest.raises(ValueError, match="OIDC discovery failed"):
                     create_server(transport="streamable-http")
 
-    def test_explicit_jwks_uri_skips_discovery(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_explicit_jwks_uri_skips_discovery(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test that explicit OIDC_JWKS_URI skips OIDC discovery."""
-        monkeypatch.setenv("OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/")
+        monkeypatch.setenv(
+            "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
+        )
         monkeypatch.setenv("OIDC_JWKS_URI", "https://auth.example.com/custom/jwks/")
 
-        with mock.patch("imap_mcp.server.load_config", return_value=self._mock_config()):
+        with mock.patch(
+            "imap_mcp.server.load_config", return_value=self._mock_config()
+        ):
             with mock.patch("imap_mcp.auth.discover_jwks_uri") as mock_discover:
                 create_server(transport="streamable-http")
                 mock_discover.assert_not_called()
 
     def test_stdio_no_auth(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that auth is not configured for stdio transport."""
-        monkeypatch.setenv("OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/")
+        monkeypatch.setenv(
+            "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
+        )
 
-        with mock.patch("imap_mcp.server.load_config", return_value=self._mock_config()):
+        with mock.patch(
+            "imap_mcp.server.load_config", return_value=self._mock_config()
+        ):
             server = create_server(transport="stdio")
             assert server._token_verifier is None
 
-    def test_resource_server_url_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_resource_server_url_from_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test that MCP_RESOURCE_SERVER_URL is used in AuthSettings."""
-        monkeypatch.setenv("OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/")
+        monkeypatch.setenv(
+            "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
+        )
         monkeypatch.setenv("MCP_RESOURCE_SERVER_URL", "https://mcp.example.com/mcp")
         monkeypatch.delenv("OIDC_JWKS_URI", raising=False)
 
-        with mock.patch("imap_mcp.server.load_config", return_value=self._mock_config()):
-            with mock.patch("imap_mcp.auth.discover_jwks_uri", return_value="https://auth.example.com/jwks/"):
+        with mock.patch(
+            "imap_mcp.server.load_config", return_value=self._mock_config()
+        ):
+            with mock.patch(
+                "imap_mcp.auth.discover_jwks_uri",
+                return_value="https://auth.example.com/jwks/",
+            ):
                 with mock.patch("imap_mcp.server.FastMCP") as MockFastMCP:
                     MockFastMCP.return_value = mock.MagicMock()
                     create_server(transport="streamable-http")
                     call_kwargs = MockFastMCP.call_args.kwargs
                     auth_settings = call_kwargs["auth"]
-                    assert str(auth_settings.resource_server_url) == "https://mcp.example.com/mcp"
-                    assert str(auth_settings.issuer_url) == "https://auth.example.com/application/o/test/"
+                    assert (
+                        str(auth_settings.resource_server_url)
+                        == "https://mcp.example.com/mcp"
+                    )
+                    assert (
+                        str(auth_settings.issuer_url)
+                        == "https://auth.example.com/application/o/test/"
+                    )

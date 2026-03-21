@@ -28,16 +28,15 @@ def identify_meeting_invite_details(email_obj: Email) -> Dict[str, Any]:
                 - description: Meeting description/body
     """
     # Initialize result
-    result = {
-        "is_invite": False,
-        "details": {}
-    }
+    result = {"is_invite": False, "details": {}}
 
     # Check if this looks like a meeting invite
     if _is_meeting_invite(email_obj):
         result["is_invite"] = True
         result["details"] = _extract_meeting_details(email_obj)
-        logger.debug("Identified email as meeting invite (message_id=%s)", email_obj.message_id)
+        logger.debug(
+            "Identified email as meeting invite (message_id=%s)", email_obj.message_id
+        )
 
     return result
 
@@ -76,12 +75,19 @@ def _is_meeting_invite(email_obj: Email) -> bool:
 
     # Check for .ics attachments
     for attachment in email_obj.attachments:
-        if attachment.filename.lower().endswith(".ics") or attachment.content_type == "text/calendar":
+        if (
+            attachment.filename.lower().endswith(".ics")
+            or attachment.content_type == "text/calendar"
+        ):
             logger.debug("Found calendar attachment")
             return True
 
     # Check for calendar method headers
-    if email_obj.headers.get("Method", "").upper() == "REQUEST" or email_obj.headers.get("Content-Type", "").lower().find("method=request") != -1:
+    if (
+        email_obj.headers.get("Method", "").upper() == "REQUEST"
+        or email_obj.headers.get("Content-Type", "").lower().find("method=request")
+        != -1
+    ):
         logger.debug("Found calendar method headers")
         return True
 
@@ -91,7 +97,7 @@ def _is_meeting_invite(email_obj: Email) -> bool:
         content_text = email_obj.content.text.lower()
     elif email_obj.content.html:
         # Strip HTML tags for simple text analysis
-        content_text = re.sub(r'<[^>]*>', '', email_obj.content.html).lower()
+        content_text = re.sub(r"<[^>]*>", "", email_obj.content.html).lower()
 
     invite_content_patterns = [
         r"has invited you to",
@@ -164,7 +170,9 @@ def _extract_meeting_subject(email_obj: Email) -> str:
     return subject.strip()
 
 
-def _extract_meeting_times(email_obj: Email) -> Tuple[Optional[datetime], Optional[datetime]]:
+def _extract_meeting_times(
+    email_obj: Email,
+) -> Tuple[Optional[datetime], Optional[datetime]]:
     """Extract meeting start and end times from invite email.
 
     Args:
@@ -185,7 +193,7 @@ def _extract_meeting_times(email_obj: Email) -> Tuple[Optional[datetime], Option
         content_text = email_obj.content.text
     elif email_obj.content.html:
         # Strip HTML tags
-        content_text = re.sub(r'<[^>]*>', '', email_obj.content.html)
+        content_text = re.sub(r"<[^>]*>", "", email_obj.content.html)
 
     # Look for common date and time patterns in email content
     # Pattern for "When: Monday, January 1, 2023 10:00 AM - 11:00 AM"
@@ -195,7 +203,9 @@ def _extract_meeting_times(email_obj: Email) -> Tuple[Optional[datetime], Option
     if when_match:
         when_text = when_match.group(1).strip()
         # Extract times from the "when" line
-        time_range_pattern = r"(\d{1,2}[:]\d{2}\s*(?:AM|PM))\s*-\s*(\d{1,2}[:]\d{2}\s*(?:AM|PM))"
+        time_range_pattern = (
+            r"(\d{1,2}[:]\d{2}\s*(?:AM|PM))\s*-\s*(\d{1,2}[:]\d{2}\s*(?:AM|PM))"
+        )
         time_match = re.search(time_range_pattern, when_text, re.IGNORECASE)
 
         if time_match and default_date:
@@ -268,7 +278,7 @@ def _extract_organizer(email_obj: Email) -> str:
     if email_obj.content.text:
         content_text = email_obj.content.text
     elif email_obj.content.html:
-        content_text = re.sub(r'<[^>]*>', '', email_obj.content.html)
+        content_text = re.sub(r"<[^>]*>", "", email_obj.content.html)
 
     # Look for "Organizer:" pattern
     organizer_pattern = r"organizer:[\s]*(.*?)(?:[\r\n]|$)"
@@ -297,7 +307,7 @@ def _extract_location(email_obj: Email) -> str:
     if email_obj.content.text:
         content_text = email_obj.content.text
     elif email_obj.content.html:
-        content_text = re.sub(r'<[^>]*>', '', email_obj.content.html)
+        content_text = re.sub(r"<[^>]*>", "", email_obj.content.html)
 
     # Look for "Location:" pattern
     location_pattern = r"location:[\s]*(.*?)(?:[\r\n]|$)"
@@ -310,7 +320,14 @@ def _extract_location(email_obj: Email) -> str:
         if re.search(r"https?://", location, re.IGNORECASE):
             # This is an online meeting
             pass
-        elif location.lower() in ["online", "virtual", "zoom", "teams", "meet", "webex"]:
+        elif location.lower() in [
+            "online",
+            "virtual",
+            "zoom",
+            "teams",
+            "meet",
+            "webex",
+        ]:
             # This is an online meeting with a generic location
             pass
 
@@ -333,6 +350,6 @@ def _extract_description(email_obj: Email) -> str:
     # Fall back to HTML content if text is not available
     if email_obj.content.html:
         # Simple HTML to text conversion
-        return re.sub(r'<[^>]*>', '', email_obj.content.html)
+        return re.sub(r"<[^>]*>", "", email_obj.content.html)
 
     return "No description available"

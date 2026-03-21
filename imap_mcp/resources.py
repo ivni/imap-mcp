@@ -96,16 +96,18 @@ def register_resources(mcp: FastMCP, imap_client: ImapClient) -> None:
             # Create summaries
             summaries: List[Dict[str, Any]] = []
             for uid, email_obj in emails.items():
-                summaries.append({
-                    "uid": uid,
-                    "folder": folder,
-                    "from": str(email_obj.from_),
-                    "to": [str(to) for to in email_obj.to],
-                    "subject": email_obj.subject,
-                    "date": email_obj.date.isoformat() if email_obj.date else None,
-                    "flags": email_obj.flags,
-                    "has_attachments": len(email_obj.attachments) > 0,
-                })
+                summaries.append(
+                    {
+                        "uid": uid,
+                        "folder": folder,
+                        "from": str(email_obj.from_),
+                        "to": [str(to) for to in email_obj.to],
+                        "subject": email_obj.subject,
+                        "date": email_obj.date.isoformat() if email_obj.date else None,
+                        "flags": email_obj.flags,
+                        "has_attachments": len(email_obj.attachments) > 0,
+                    }
+                )
 
             return json.dumps(summaries, indent=2)
         except Exception as e:
@@ -149,24 +151,25 @@ def register_resources(mcp: FastMCP, imap_client: ImapClient) -> None:
 
                     # Create summaries
                     for uid, email_obj in emails.items():
-                        results.append({
-                            "uid": uid,
-                            "folder": folder,
-                            "from": str(email_obj.from_),
-                            "to": [str(to) for to in email_obj.to],
-                            "subject": email_obj.subject,
-                            "date": email_obj.date.isoformat() if email_obj.date else None,
-                            "flags": email_obj.flags,
-                            "has_attachments": len(email_obj.attachments) > 0,
-                        })
+                        results.append(
+                            {
+                                "uid": uid,
+                                "folder": folder,
+                                "from": str(email_obj.from_),
+                                "to": [str(to) for to in email_obj.to],
+                                "subject": email_obj.subject,
+                                "date": email_obj.date.isoformat()
+                                if email_obj.date
+                                else None,
+                                "flags": email_obj.flags,
+                                "has_attachments": len(email_obj.attachments) > 0,
+                            }
+                        )
             except Exception as e:
                 logger.warning(f"Error searching folder {folder}: {e}")
 
         # Sort results by date (newest first)
-        results.sort(
-            key=lambda x: str(x.get("date") or "0"),
-            reverse=True
-        )
+        results.sort(key=lambda x: str(x.get("date") or "0"), reverse=True)
 
         return json.dumps(results, indent=2)
 
@@ -218,7 +221,9 @@ def register_resources(mcp: FastMCP, imap_client: ImapClient) -> None:
             if email_obj.attachments:
                 parts.append(f"Attachments: {len(email_obj.attachments)}")
                 for i, attachment in enumerate(email_obj.attachments, 1):
-                    parts.append(f"  {i}. {attachment.filename} ({attachment.content_type}, {attachment.size} bytes)")
+                    parts.append(
+                        f"  {i}. {attachment.filename} ({attachment.content_type}, {attachment.size} bytes)"
+                    )
 
             parts.append("")  # Empty line before content
 

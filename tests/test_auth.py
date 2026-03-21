@@ -56,7 +56,9 @@ def valid_jwt_claims() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def make_signed_jwt(rsa_keypair: tuple[bytes, RSAPublicKey], valid_jwt_claims: Dict[str, Any]) -> Callable[..., str]:
+def make_signed_jwt(
+    rsa_keypair: tuple[bytes, RSAPublicKey], valid_jwt_claims: Dict[str, Any]
+) -> Callable[..., str]:
     """Factory fixture to create signed JWTs."""
     private_pem, _ = rsa_keypair
 
@@ -118,7 +120,11 @@ class TestOIDCJWTVerifier:
     JWKS_URI = "https://auth.example.com/application/o/test-app/jwks/"
 
     @pytest.mark.asyncio
-    async def test_valid_jwt(self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]) -> None:
+    async def test_valid_jwt(
+        self,
+        rsa_keypair: tuple[bytes, RSAPublicKey],
+        make_signed_jwt: Callable[..., str],
+    ) -> None:
         """Test successful JWT validation returns AccessToken."""
         _, public_key = rsa_keypair
         token = make_signed_jwt()
@@ -138,7 +144,11 @@ class TestOIDCJWTVerifier:
         assert result.expires_at is not None
 
     @pytest.mark.asyncio
-    async def test_expired_jwt(self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]) -> None:
+    async def test_expired_jwt(
+        self,
+        rsa_keypair: tuple[bytes, RSAPublicKey],
+        make_signed_jwt: Callable[..., str],
+    ) -> None:
         """Test that expired JWT returns None."""
         _, public_key = rsa_keypair
         token = make_signed_jwt({"exp": int(time.time()) - 100})
@@ -153,7 +163,11 @@ class TestOIDCJWTVerifier:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_wrong_issuer(self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]) -> None:
+    async def test_wrong_issuer(
+        self,
+        rsa_keypair: tuple[bytes, RSAPublicKey],
+        make_signed_jwt: Callable[..., str],
+    ) -> None:
         """Test that JWT with wrong issuer returns None."""
         _, public_key = rsa_keypair
         token = make_signed_jwt({"iss": "https://evil.example.com/"})
@@ -168,7 +182,11 @@ class TestOIDCJWTVerifier:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_audience_validation_pass(self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]) -> None:
+    async def test_audience_validation_pass(
+        self,
+        rsa_keypair: tuple[bytes, RSAPublicKey],
+        make_signed_jwt: Callable[..., str],
+    ) -> None:
         """Test that JWT with correct audience passes validation."""
         _, public_key = rsa_keypair
         token = make_signed_jwt({"aud": "my-mcp-server"})
@@ -185,7 +203,11 @@ class TestOIDCJWTVerifier:
         assert result is not None
 
     @pytest.mark.asyncio
-    async def test_audience_validation_fail(self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]) -> None:
+    async def test_audience_validation_fail(
+        self,
+        rsa_keypair: tuple[bytes, RSAPublicKey],
+        make_signed_jwt: Callable[..., str],
+    ) -> None:
         """Test that JWT with wrong audience returns None."""
         _, public_key = rsa_keypair
         token = make_signed_jwt({"aud": "wrong-audience"})
@@ -203,7 +225,9 @@ class TestOIDCJWTVerifier:
 
     @pytest.mark.asyncio
     async def test_no_audience_validation_when_not_configured(
-        self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]
+        self,
+        rsa_keypair: tuple[bytes, RSAPublicKey],
+        make_signed_jwt: Callable[..., str],
     ) -> None:
         """Test that audience is not checked when not configured."""
         _, public_key = rsa_keypair
@@ -249,7 +273,11 @@ class TestOIDCJWTVerifier:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_client_id_from_azp(self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]) -> None:
+    async def test_client_id_from_azp(
+        self,
+        rsa_keypair: tuple[bytes, RSAPublicKey],
+        make_signed_jwt: Callable[..., str],
+    ) -> None:
         """Test that client_id is extracted from 'azp' claim."""
         _, public_key = rsa_keypair
         token = make_signed_jwt({"azp": "my-client-id"})
@@ -265,7 +293,11 @@ class TestOIDCJWTVerifier:
         assert result.client_id == "my-client-id"
 
     @pytest.mark.asyncio
-    async def test_client_id_fallback(self, rsa_keypair: tuple[bytes, RSAPublicKey], make_signed_jwt: Callable[..., str]) -> None:
+    async def test_client_id_fallback(
+        self,
+        rsa_keypair: tuple[bytes, RSAPublicKey],
+        make_signed_jwt: Callable[..., str],
+    ) -> None:
         """Test client_id falls back to 'client_id' claim when 'azp' is absent."""
         _, public_key = rsa_keypair
         token = make_signed_jwt({"azp": None, "client_id": "fallback-client"})
@@ -303,9 +335,7 @@ class TestDiscoverJWKSUri:
             mock_response.__exit__ = mock.MagicMock(return_value=False)
             mock_urlopen.return_value = mock_response
 
-            result = discover_jwks_uri(
-                "https://auth.example.com/application/o/test/"
-            )
+            result = discover_jwks_uri("https://auth.example.com/application/o/test/")
 
         assert result == "https://auth.example.com/application/o/test/jwks/"
 
@@ -315,9 +345,7 @@ class TestDiscoverJWKSUri:
             "urllib.request.urlopen", side_effect=Exception("Connection refused")
         ):
             with pytest.raises(ValueError, match="OIDC discovery failed"):
-                discover_jwks_uri(
-                    "https://auth.example.com/application/o/test/"
-                )
+                discover_jwks_uri("https://auth.example.com/application/o/test/")
 
     def test_discovery_missing_jwks_uri_raises_error(self) -> None:
         """Test that missing jwks_uri in discovery document raises ValueError."""
@@ -333,9 +361,7 @@ class TestDiscoverJWKSUri:
             mock_urlopen.return_value = mock_response
 
             with pytest.raises(ValueError, match="does not contain 'jwks_uri'"):
-                discover_jwks_uri(
-                    "https://auth.example.com/application/o/test/"
-                )
+                discover_jwks_uri("https://auth.example.com/application/o/test/")
 
     def test_trailing_slash_handling(self) -> None:
         """Test that trailing slash is handled correctly in discovery URL."""
@@ -391,9 +417,7 @@ class TestIssuerURLValidation:
             with mock.patch("urllib.request.urlopen") as mock_urlopen:
                 mock_response = mock.MagicMock()
                 mock_response.read.return_value = discovery_response
-                mock_response.__enter__ = mock.MagicMock(
-                    return_value=mock_response
-                )
+                mock_response.__enter__ = mock.MagicMock(return_value=mock_response)
                 mock_response.__exit__ = mock.MagicMock(return_value=False)
                 mock_urlopen.return_value = mock_response
 

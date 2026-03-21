@@ -71,10 +71,7 @@ class TestTestUtils:
 
         # Test with custom parameters
         emails = generate_test_emails(
-            count=3,
-            folder="Sent",
-            sender="test@example.com",
-            with_attachments=True
+            count=3, folder="Sent", sender="test@example.com", with_attachments=True
         )
         assert len(emails) == 3
         assert all(email.folder == "Sent" for email in emails)
@@ -128,7 +125,7 @@ class TestTestUtils:
             to=[EmailAddress(name="Test Recipient", address="recipient@example.com")],
             date=email.utils.parsedate_to_datetime("Thu, 01 Jan 2023 12:00:00 +0000"),
             folder="INBOX",
-            uid=12345
+            uid=12345,
         )
 
         # Create an identical email
@@ -139,7 +136,7 @@ class TestTestUtils:
             to=[EmailAddress(name="Test Recipient", address="recipient@example.com")],
             date=email.utils.parsedate_to_datetime("Thu, 01 Jan 2023 12:00:00 +0000"),
             folder="INBOX",
-            uid=12345
+            uid=12345,
         )
 
         # This should not raise an assertion error
@@ -153,7 +150,7 @@ class TestTestUtils:
             to=[EmailAddress(name="Test Recipient", address="recipient@example.com")],
             date=email.utils.parsedate_to_datetime("Thu, 01 Jan 2023 12:00:00 +0000"),
             folder="INBOX",
-            uid=12345
+            uid=12345,
         )
 
         # This should raise an assertion error
@@ -207,12 +204,18 @@ class TestFixtures:
         assert test_email_message_simple is not None
         assert test_email_message_simple["Subject"] == "Simple Test Email"
         assert test_email_message_simple["From"] == "Test Sender <sender@example.com>"
-        assert test_email_message_simple["To"] == "Test Recipient <recipient@example.com>"
-        assert test_email_message_simple["Message-ID"] == "<simple-test-123@example.com>"
+        assert (
+            test_email_message_simple["To"] == "Test Recipient <recipient@example.com>"
+        )
+        assert (
+            test_email_message_simple["Message-ID"] == "<simple-test-123@example.com>"
+        )
         assert not test_email_message_simple.is_multipart()
         assert test_email_message_simple.get_content_type() == "text/plain"
 
-    def test_test_email_message_multipart(self, test_email_message_multipart: Any) -> None:
+    def test_test_email_message_multipart(
+        self, test_email_message_multipart: Any
+    ) -> None:
         """Test the multipart email message fixture."""
         assert test_email_message_multipart is not None
         assert test_email_message_multipart["Subject"] == "Multipart Test Email"
@@ -224,7 +227,9 @@ class TestFixtures:
         assert parts[0].get_content_type() == "text/plain"
         assert parts[1].get_content_type() == "text/html"
 
-    def test_test_email_message_with_attachment(self, test_email_message_with_attachment: Any) -> None:
+    def test_test_email_message_with_attachment(
+        self, test_email_message_with_attachment: Any
+    ) -> None:
         """Test the email message with attachment fixture."""
         assert test_email_message_with_attachment is not None
         assert test_email_message_with_attachment["Subject"] == "Email with Attachment"
@@ -241,7 +246,9 @@ class TestFixtures:
         assert "attachment" in disposition
         assert "test.txt" in disposition
 
-    def test_test_email_message_encoded_headers(self, test_email_message_encoded_headers: Any) -> None:
+    def test_test_email_message_encoded_headers(
+        self, test_email_message_encoded_headers: Any
+    ) -> None:
         """Test the email message with encoded headers fixture."""
         assert test_email_message_encoded_headers is not None
 
@@ -266,18 +273,23 @@ class TestFixtures:
         custom_msg = make_test_email_message(
             from_addr="custom@example.com",
             from_name="Custom Sender",
-            to_addrs=[("recipient1@example.com", "Recipient One"),
-                     ("recipient2@example.com", "Recipient Two")],
+            to_addrs=[
+                ("recipient1@example.com", "Recipient One"),
+                ("recipient2@example.com", "Recipient Two"),
+            ],
             cc_addrs=[("cc@example.com", "CC Person")],
             subject="Custom Subject",
             body_text="Custom body text",
             body_html="<p>Custom HTML</p>",
             attachments=[("test.txt", b"Text content", "text/plain")],
-            headers={"X-Custom-Header": "Custom Value"}
+            headers={"X-Custom-Header": "Custom Value"},
         )
 
         assert custom_msg["From"] == "Custom Sender <custom@example.com>"
-        assert custom_msg["To"] == "Recipient One <recipient1@example.com>, Recipient Two <recipient2@example.com>"
+        assert (
+            custom_msg["To"]
+            == "Recipient One <recipient1@example.com>, Recipient Two <recipient2@example.com>"
+        )
         assert custom_msg["Cc"] == "CC Person <cc@example.com>"
         assert custom_msg["Subject"] == "Custom Subject"
         assert custom_msg["X-Custom-Header"] == "Custom Value"
@@ -290,7 +302,10 @@ class TestFixtures:
         assert parts[0].get_payload(decode=True).decode() == "Custom body text"
         assert parts[1].get_content_type() == "text/html"
         assert parts[1].get_payload(decode=True).decode() == "<p>Custom HTML</p>"
-        assert "text/plain" in parts[2].get_content_type() or parts[2].get_content_type() == "application/octet-stream"
+        assert (
+            "text/plain" in parts[2].get_content_type()
+            or parts[2].get_content_type() == "application/octet-stream"
+        )
         assert "test.txt" in parts[2].get("Content-Disposition", "")
 
     def test_test_email_response_data(self, test_email_response_data: Any) -> None:
@@ -309,7 +324,9 @@ class TestFixtures:
         assert b"Subject: Test Email" in body_data
         assert b"This is a test email body." in body_data
 
-    def test_make_test_email_response_data(self, make_test_email_response_data: Any) -> None:
+    def test_make_test_email_response_data(
+        self, make_test_email_response_data: Any
+    ) -> None:
         """Test the factory fixture for creating IMAP response data."""
         # Test with default parameters
         data = make_test_email_response_data()
@@ -326,7 +343,7 @@ class TestFixtures:
                 "Subject": "Custom Subject",
                 "To": "recipient@example.com",
             },
-            body_text="Custom body text"
+            body_text="Custom body text",
         )
 
         assert custom_data[b"UID"] == 54321

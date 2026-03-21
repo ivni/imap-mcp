@@ -104,9 +104,7 @@ class TestCalendarMock:
         mock_random.return_value = 0.5  # Below 0.7 threshold, so available
         start_time = datetime(2025, 4, 1, 10, 0, 0)
         end_time = datetime(2025, 4, 1, 11, 0, 0)
-        available, reason = _check_availability_by_mode(
-            start_time, end_time, "random"
-        )
+        available, reason = _check_availability_by_mode(start_time, end_time, "random")
         assert available is True
         assert "available" in reason.lower()
 
@@ -116,9 +114,7 @@ class TestCalendarMock:
         mock_random.return_value = 0.8  # Above 0.7 threshold, so busy
         start_time = datetime(2025, 4, 1, 10, 0, 0)
         end_time = datetime(2025, 4, 1, 11, 0, 0)
-        available, reason = _check_availability_by_mode(
-            start_time, end_time, "random"
-        )
+        available, reason = _check_availability_by_mode(start_time, end_time, "random")
         assert available is False
         assert "busy" in reason.lower()
 

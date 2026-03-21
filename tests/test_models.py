@@ -309,9 +309,7 @@ class TestEmailContentGetBestContent(unittest.TestCase):
 
     def test_get_best_content_strips_html_when_text_absent(self) -> None:
         """Test HTML tag stripping and entity unescaping when only HTML exists."""
-        content = EmailContent(
-            text=None, html="<p>Hello &amp; <b>world</b></p>"
-        )
+        content = EmailContent(text=None, html="<p>Hello &amp; <b>world</b></p>")
         self.assertEqual(content.get_best_content(), "Hello & world")
 
     def test_get_best_content_empty_text_falls_through_to_html(self) -> None:

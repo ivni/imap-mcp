@@ -75,11 +75,11 @@ class EmailAddress:
         if match:
             name = match.group(1).strip()
             address = match.group(2).strip()
-        elif '@' in address_str and '<' not in address_str:
+        elif "@" in address_str and "<" not in address_str:
             address = address_str.strip()
 
         # Validate the email address format
-        if '@' in address:
+        if "@" in address:
             try:
                 result = validate_email(address, check_deliverability=False)
                 address = result.normalized
@@ -235,7 +235,7 @@ class Email:
         references = []
         if references_str:
             # Extract all message IDs from References header
-            references = [ref.strip() for ref in re.findall(r'<[^>]+>', references_str)]
+            references = [ref.strip() for ref in re.findall(r"<[^>]+>", references_str)]
 
         # Parse addresses (gracefully handle invalid addresses from delivered emails)
         try:
@@ -307,12 +307,13 @@ class Email:
                     content_disposition = part.get("Content-Disposition", "")
 
                     # Handle attachments (both explicit and inline)
-                    if ("attachment" in content_disposition or
-                        "inline" in content_disposition or
-                        content_type.startswith("image/") or
-                        content_type.startswith("application/") or
-                        "name=" in part.get("Content-Type", "")):
-
+                    if (
+                        "attachment" in content_disposition
+                        or "inline" in content_disposition
+                        or content_type.startswith("image/")
+                        or content_type.startswith("application/")
+                        or "name=" in part.get("Content-Type", "")
+                    ):
                         attachments.append(EmailAttachment.from_part(part))
                     # Handle text content
                     elif content_type == "text/plain":
@@ -324,7 +325,9 @@ class Email:
                                 if isinstance(raw, bytes):
                                     content.text = raw.decode(charset, errors="replace")
                             except Exception as e:
-                                content.text = f"[Error decoding plain text content: {e}]"
+                                content.text = (
+                                    f"[Error decoding plain text content: {e}]"
+                                )
                     # Handle HTML content
                     elif content_type == "text/html":
                         # Only replace existing HTML if it's empty
@@ -386,8 +389,9 @@ class Email:
         thread_info = ""
         if self.in_reply_to or self.references:
             thread_info = "\nThread: " + (
-                f"Reply to {self.in_reply_to}" if self.in_reply_to else
-                f"References {len(self.references)} previous messages"
+                f"Reply to {self.in_reply_to}"
+                if self.in_reply_to
+                else f"References {len(self.references)} previous messages"
             )
 
         return (

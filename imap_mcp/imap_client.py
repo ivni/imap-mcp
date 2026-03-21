@@ -34,7 +34,9 @@ class ImapClient:
                 An empty list means no folders are allowed.
         """
         self.config = config
-        self.allowed_folders = set(allowed_folders) if allowed_folders is not None else None
+        self.allowed_folders = (
+            set(allowed_folders) if allowed_folders is not None else None
+        )
         self.client: Optional[imapclient.IMAPClient] = None
         self.folder_cache: Dict[str, List[str]] = {}
         self.connected = False
@@ -129,7 +131,7 @@ class ImapClient:
         capabilities = []
         for cap in raw_capabilities:
             if isinstance(cap, bytes):
-                cap = cap.decode('utf-8')
+                cap = cap.decode("utf-8")
             capabilities.append(cap.upper())
 
         return capabilities
@@ -255,7 +257,9 @@ class ImapClient:
         assert self.client is not None
 
         try:
-            result: Dict[str, Any] = self.client.select_folder(folder, readonly=readonly)
+            result: Dict[str, Any] = self.client.select_folder(
+                folder, readonly=readonly
+            )
             self.current_folder = folder
             logger.debug(f"Selected folder '{folder}'")
             return result
@@ -286,7 +290,9 @@ class ImapClient:
         self.select_folder(folder, readonly=True)
         assert self.client is not None
 
-        resolved_criteria: Union[str, List[Any], Tuple[Any, ...], Sequence[Any]] = criteria
+        resolved_criteria: Union[str, List[Any], Tuple[Any, ...], Sequence[Any]] = (
+            criteria
+        )
         if isinstance(criteria, str):
             # Predefined criteria strings
             criteria_map: Dict[str, Union[str, List[Any]]] = {
@@ -351,10 +357,7 @@ class ImapClient:
         flags = message_data[b"FLAGS"]
 
         # Convert flags to strings
-        str_flags = [
-            f.decode("utf-8") if isinstance(f, bytes) else f
-            for f in flags
-        ]
+        str_flags = [f.decode("utf-8") if isinstance(f, bytes) else f for f in flags]
 
         # Parse email
         message = email.message_from_bytes(raw_message)
@@ -418,8 +421,7 @@ class ImapClient:
 
             # Convert flags to strings
             str_flags = [
-                f.decode("utf-8") if isinstance(f, bytes) else f
-                for f in flags
+                f.decode("utf-8") if isinstance(f, bytes) else f for f in flags
             ]
 
             # Parse email
@@ -456,14 +458,18 @@ class ImapClient:
         # Fetch the initial email
         initial_email = self.fetch_email(uid, folder)
         if not initial_email:
-            raise ValueError(f"Initial email with UID {uid} not found in folder {folder}")
+            raise ValueError(
+                f"Initial email with UID {uid} not found in folder {folder}"
+            )
 
         # Get thread identifiers from the initial email
         message_id = initial_email.headers.get("Message-ID", "")
         subject = initial_email.subject
 
         # Strip "Re:", "Fwd:", etc. from the subject for better matching
-        clean_subject = re.sub(r"^(?:Re|Fwd|Fw|FWD|RE|FW):\s*", "", subject, flags=re.IGNORECASE)
+        clean_subject = re.sub(
+            r"^(?:Re|Fwd|Fw|FWD|RE|FW):\s*", "", subject, flags=re.IGNORECASE
+        )
 
         # Set to store all UIDs that belong to the thread
         thread_uids = {uid}
@@ -471,7 +477,7 @@ class ImapClient:
         # Search for emails with this Message-ID in the References or In-Reply-To headers
         if message_id:
             # Look for emails that reference this message ID
-            references_query = ['HEADER', 'References', message_id]
+            references_query = ["HEADER", "References", message_id]
             try:
                 references_results = self.search(references_query, folder)
                 thread_uids.update(references_results)
@@ -479,7 +485,7 @@ class ImapClient:
                 logger.warning(f"Error searching for References: {e}")
 
             # Look for direct replies to this message
-            inreplyto_query = ['HEADER', 'In-Reply-To', message_id]
+            inreplyto_query = ["HEADER", "In-Reply-To", message_id]
             try:
                 inreplyto_results = self.search(inreplyto_query, folder)
                 thread_uids.update(inreplyto_results)
@@ -492,17 +498,19 @@ class ImapClient:
 
             # Extract all message IDs from the References header
             if initial_references:
-                for ref_id in re.findall(r'<[^>]+>', initial_references):
-                    query = ['HEADER', 'Message-ID', ref_id]
+                for ref_id in re.findall(r"<[^>]+>", initial_references):
+                    query = ["HEADER", "Message-ID", ref_id]
                     try:
                         results = self.search(query, folder)
                         thread_uids.update(results)
                     except Exception as e:
-                        logger.warning(f"Error searching for Referenced message {ref_id}: {e}")
+                        logger.warning(
+                            f"Error searching for Referenced message {ref_id}: {e}"
+                        )
 
             # Look for the message that this is a reply to
             if initial_inreplyto:
-                query = ['HEADER', 'Message-ID', initial_inreplyto]
+                query = ["HEADER", "Message-ID", initial_inreplyto]
                 try:
                     results = self.search(query, folder)
                     thread_uids.update(results)
@@ -513,7 +521,7 @@ class ImapClient:
         if len(thread_uids) <= 2 and clean_subject:
             # Look for emails with the same or related subject (Re: Subject)
             # This is a fallback for email clients that don't properly use References/In-Reply-To
-            subject_query = ['SUBJECT', clean_subject]
+            subject_query = ["SUBJECT", clean_subject]
             try:
                 subject_results = self.search(subject_query, folder)
 
@@ -532,7 +540,7 @@ class ImapClient:
                         f"Fwd: {clean_subject}",
                         f"FWD: {clean_subject}",
                         f"Fw: {clean_subject}",
-                        f"FW: {clean_subject}"
+                        f"FW: {clean_subject}",
                     ]
 
                     # Fetch subjects for all candidate emails
@@ -550,8 +558,7 @@ class ImapClient:
 
         # Sort emails by date (chronologically)
         sorted_emails = sorted(
-            thread_emails.values(),
-            key=lambda e: e.date if e.date else datetime.min
+            thread_emails.values(), key=lambda e: e.date if e.date else datetime.min
         )
 
         return sorted_emails
@@ -676,7 +683,13 @@ class ImapClient:
         folders = self.list_folders(refresh=True)
 
         # Look for standard drafts folder names (case-insensitive)
-        drafts_folder_names = ["Drafts", "Draft", "Brouillons", "Borradores", "Entwürfe"]
+        drafts_folder_names = [
+            "Drafts",
+            "Draft",
+            "Brouillons",
+            "Borradores",
+            "Entwürfe",
+        ]
         lower_names = [name.lower() for name in drafts_folder_names]
         for folder in folders:
             # Check exact match and basename match (for paths like [Gmail]/Drafts)
@@ -717,9 +730,7 @@ class ImapClient:
             # Save the draft with Draft flag
             assert self.client is not None
             response = self.client.append(
-                drafts_folder,
-                message_bytes,
-                flags=(r"\Draft",)
+                drafts_folder, message_bytes, flags=(r"\Draft",)
             )
 
             # Try to extract the UID from the response
@@ -728,7 +739,7 @@ class ImapClient:
                 # Parse the APPENDUID response (format: [APPENDUID <uidvalidity> <uid>])
                 try:
                     # Use a more robust parsing approach
-                    match = re.search(rb'APPENDUID\s+\d+\s+(\d+)', response)
+                    match = re.search(rb"APPENDUID\s+\d+\s+(\d+)", response)
                     if match:
                         uid = int(match.group(1))
                         logger.debug(f"Draft saved with UID: {uid}")
@@ -736,7 +747,9 @@ class ImapClient:
                     logger.warning(f"Could not parse UID from response: {e}")
 
             if uid is None:
-                logger.warning(f"Could not extract UID from append response: {response}")
+                logger.warning(
+                    f"Could not extract UID from append response: {response}"
+                )
 
             return uid
 

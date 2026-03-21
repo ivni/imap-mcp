@@ -37,7 +37,7 @@ class TestMeetingInviteOrchestration:
             port=993,
             username="test@example.com",
             password="password",
-            use_ssl=True
+            use_ssl=True,
         )
         client = ImapClient(config)
 
@@ -60,7 +60,7 @@ class TestMeetingInviteOrchestration:
             content=EmailContent(
                 text="You are invited to a team sync meeting.\nWhen: Tuesday, April 1, 2025 10:00 AM - 11:00 AM"
             ),
-            headers={"Content-Type": "text/calendar; method=REQUEST"}
+            headers={"Content-Type": "text/calendar; method=REQUEST"},
         )
 
     @pytest.fixture
@@ -72,10 +72,8 @@ class TestMeetingInviteOrchestration:
             from_=EmailAddress(name="Sender", address="sender@example.com"),
             to=[EmailAddress(name="Me", address="me@example.com")],
             date=datetime(2025, 4, 1, 9, 0, 0),
-            content=EmailContent(
-                text="This is a regular email, not a meeting invite."
-            ),
-            headers={}
+            content=EmailContent(text="This is a regular email, not a meeting invite."),
+            headers={},
         )
 
     @pytest.fixture
@@ -88,6 +86,7 @@ class TestMeetingInviteOrchestration:
             def decorator(func: Any) -> Any:
                 stored_tools[func.__name__] = func
                 return func
+
             return decorator
 
         mcp.tool = mock_tool_decorator
@@ -124,20 +123,20 @@ class TestMeetingInviteOrchestration:
                 "start_time": datetime(2025, 4, 1, 10, 0, 0),
                 "end_time": datetime(2025, 4, 1, 11, 0, 0),
                 "organizer": "Organizer <organizer@example.com>",
-                "location": "Conference Room"
-            }
+                "location": "Conference Room",
+            },
         }
 
         mock_check_availability.return_value = {
             "available": True,
             "reason": "Time slot is available",
-            "alternative_times": []
+            "alternative_times": [],
         }
 
         mock_generate_reply.return_value = {
             "reply_subject": "Accepted: Team Sync",
             "reply_body": "I'll attend the meeting...",
-            "reply_type": "accept"
+            "reply_type": "accept",
         }
 
         mock_mime_message = MagicMock(spec=EmailMessage)
@@ -150,7 +149,7 @@ class TestMeetingInviteOrchestration:
             folder="INBOX",
             uid=456,
             ctx=mock_context,
-            availability_mode="always_available"
+            availability_mode="always_available",
         )
 
         assert result["status"] == "success"
@@ -195,7 +194,7 @@ class TestMeetingInviteOrchestration:
             content=EmailContent(
                 text="You are invited to a team sync meeting.\nWhen: Tuesday, April 1, 2025 10:00 AM - 11:00 AM"
             ),
-            headers={"Content-Type": "text/calendar; method=REQUEST"}
+            headers={"Content-Type": "text/calendar; method=REQUEST"},
         )
 
         mock_get_client.return_value = mock_imap_client
@@ -208,20 +207,20 @@ class TestMeetingInviteOrchestration:
                 "start_time": datetime(2025, 4, 1, 10, 0, 0),
                 "end_time": datetime(2025, 4, 1, 11, 0, 0),
                 "organizer": "Organizer <organizer@example.com>",
-                "location": "Conference Room"
-            }
+                "location": "Conference Room",
+            },
         }
 
         mock_check_availability.return_value = {
             "available": True,
             "reason": "Time slot is available",
-            "alternative_times": []
+            "alternative_times": [],
         }
 
         mock_generate_reply.return_value = {
             "reply_subject": "Accepted: Team Sync",
             "reply_body": "I'll attend the meeting...",
-            "reply_type": "accept"
+            "reply_type": "accept",
         }
 
         mock_mime_message = MagicMock(spec=EmailMessage)
@@ -234,7 +233,7 @@ class TestMeetingInviteOrchestration:
             folder="INBOX",
             uid=456,
             ctx=mock_context,
-            availability_mode="always_available"
+            availability_mode="always_available",
         )
 
         assert result["status"] == "success"
@@ -261,17 +260,10 @@ class TestMeetingInviteOrchestration:
         mock_get_client.return_value = mock_imap_client
         mock_imap_client.fetch_email.return_value = mock_non_invite_email
 
-        mock_identify_invite.return_value = {
-            "is_invite": False,
-            "details": {}
-        }
+        mock_identify_invite.return_value = {"is_invite": False, "details": {}}
 
         process_meeting_invite = registered_tools["process_meeting_invite"]
-        result = await process_meeting_invite(
-            folder="INBOX",
-            uid=456,
-            ctx=mock_context
-        )
+        result = await process_meeting_invite(folder="INBOX", uid=456, ctx=mock_context)
 
         assert result["status"] == "not_invite"
         assert "The email is not a meeting invite" in result["message"]
@@ -293,11 +285,7 @@ class TestMeetingInviteOrchestration:
         mock_imap_client.fetch_email.return_value = None
 
         process_meeting_invite = registered_tools["process_meeting_invite"]
-        result = await process_meeting_invite(
-            folder="INBOX",
-            uid=456,
-            ctx=mock_context
-        )
+        result = await process_meeting_invite(folder="INBOX", uid=456, ctx=mock_context)
 
         assert result["status"] == "error"
         assert "not found" in result["message"]
@@ -333,20 +321,20 @@ class TestMeetingInviteOrchestration:
                 "start_time": datetime(2025, 4, 1, 10, 0, 0),
                 "end_time": datetime(2025, 4, 1, 11, 0, 0),
                 "organizer": "Organizer <organizer@example.com>",
-                "location": "Conference Room"
-            }
+                "location": "Conference Room",
+            },
         }
 
         mock_check_availability.return_value = {
             "available": False,
             "reason": "Calendar is busy during this time",
-            "alternative_times": []
+            "alternative_times": [],
         }
 
         mock_generate_reply.return_value = {
             "reply_subject": "Declined: Team Sync",
             "reply_body": "I'm unable to attend the meeting...",
-            "reply_type": "decline"
+            "reply_type": "decline",
         }
 
         mock_mime_message = MagicMock(spec=EmailMessage)
@@ -356,10 +344,7 @@ class TestMeetingInviteOrchestration:
 
         process_meeting_invite = registered_tools["process_meeting_invite"]
         result = await process_meeting_invite(
-            folder="INBOX",
-            uid=456,
-            ctx=mock_context,
-            availability_mode="always_busy"
+            folder="INBOX", uid=456, ctx=mock_context, availability_mode="always_busy"
         )
 
         assert result["status"] == "error"

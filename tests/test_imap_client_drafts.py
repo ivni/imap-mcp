@@ -21,7 +21,7 @@ class TestDraftsFunctionality:
             port=993,
             use_ssl=True,
             username="test@example.com",
-            password="password"
+            password="password",
         )
 
         # Create a mock IMAP client
@@ -48,14 +48,24 @@ class TestDraftsFunctionality:
     def test_get_drafts_folder_standard(self, mock_imap_client: Any) -> None:
         """Test getting the drafts folder for standard IMAP server."""
         # Mock list_folders to return standard folders
-        mock_imap_client.list_folders.return_value = ["INBOX", "Sent", "Drafts", "Trash"]
+        mock_imap_client.list_folders.return_value = [
+            "INBOX",
+            "Sent",
+            "Drafts",
+            "Trash",
+        ]
 
         # Test drafts folder detection
         drafts_folder = mock_imap_client._get_drafts_folder()
         assert drafts_folder == "Drafts"
 
         # Test with different casing
-        mock_imap_client.list_folders.return_value = ["INBOX", "Sent", "drafts", "Trash"]
+        mock_imap_client.list_folders.return_value = [
+            "INBOX",
+            "Sent",
+            "drafts",
+            "Trash",
+        ]
         drafts_folder = mock_imap_client._get_drafts_folder()
         assert drafts_folder == "drafts"
 
@@ -66,7 +76,11 @@ class TestDraftsFunctionality:
 
         # Mock list_folders to return Gmail folders
         mock_imap_client.list_folders.return_value = [
-            "INBOX", "[Gmail]/Sent Mail", "[Gmail]/Drafts", "[Gmail]/All Mail", "[Gmail]/Trash"
+            "INBOX",
+            "[Gmail]/Sent Mail",
+            "[Gmail]/Drafts",
+            "[Gmail]/All Mail",
+            "[Gmail]/Trash",
         ]
 
         # Test drafts folder detection
@@ -83,11 +97,13 @@ class TestDraftsFunctionality:
         assert drafts_folder == "INBOX"
 
     @patch("imap_mcp.imap_client.logger")
-    def test_save_draft_mime_success(self, mock_logger: Any, mock_imap_client: Any, sample_mime_message: Any) -> None:
+    def test_save_draft_mime_success(
+        self, mock_logger: Any, mock_imap_client: Any, sample_mime_message: Any
+    ) -> None:
         """Test saving a draft MIME message successfully."""
         # Mock behavior
         mock_imap_client._get_drafts_folder = MagicMock(return_value="Drafts")
-        mock_imap_client.client.append.return_value = b'[APPENDUID 1234 5678]'
+        mock_imap_client.client.append.return_value = b"[APPENDUID 1234 5678]"
 
         # Call save_draft_mime
         uid = mock_imap_client.save_draft_mime(sample_mime_message)
@@ -98,11 +114,13 @@ class TestDraftsFunctionality:
         mock_logger.debug.assert_called_with("Draft saved with UID: 5678")
 
     @patch("imap_mcp.imap_client.logger")
-    def test_save_draft_mime_no_appenduid(self, mock_logger: Any, mock_imap_client: Any, sample_mime_message: Any) -> None:
+    def test_save_draft_mime_no_appenduid(
+        self, mock_logger: Any, mock_imap_client: Any, sample_mime_message: Any
+    ) -> None:
         """Test saving a draft without APPENDUID in response."""
         # Mock behavior
         mock_imap_client._get_drafts_folder = MagicMock(return_value="Drafts")
-        mock_imap_client.client.append.return_value = b'OK'
+        mock_imap_client.client.append.return_value = b"OK"
 
         # Call save_draft_mime
         uid = mock_imap_client.save_draft_mime(sample_mime_message)
@@ -110,10 +128,14 @@ class TestDraftsFunctionality:
         # Verify behavior
         mock_imap_client.client.append.assert_called_once()
         assert uid is None
-        mock_logger.warning.assert_called_with("Could not extract UID from append response: b'OK'")
+        mock_logger.warning.assert_called_with(
+            "Could not extract UID from append response: b'OK'"
+        )
 
     @patch("imap_mcp.imap_client.logger")
-    def test_save_draft_mime_error(self, mock_logger: Any, mock_imap_client: Any, sample_mime_message: Any) -> None:
+    def test_save_draft_mime_error(
+        self, mock_logger: Any, mock_imap_client: Any, sample_mime_message: Any
+    ) -> None:
         """Test error handling when saving a draft fails."""
         # Mock behavior
         mock_imap_client._get_drafts_folder = MagicMock(return_value="Drafts")

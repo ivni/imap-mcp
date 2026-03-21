@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 def check_mock_availability(
     start_time: Union[datetime, str],
     end_time: Union[datetime, str],
-    availability_mode: str = "random"
+    availability_mode: str = "random",
 ) -> Dict[str, Any]:
     """Check mock calendar availability for a given time range.
 
@@ -43,11 +43,13 @@ def check_mock_availability(
         return {
             "available": False,
             "reason": "Invalid datetime format",
-            "alternative_times": []
+            "alternative_times": [],
         }
 
     # Log the request for debugging
-    logger.debug(f"Checking mock availability for {start_dt} to {end_dt} (mode: {availability_mode})")
+    logger.debug(
+        f"Checking mock availability for {start_dt} to {end_dt} (mode: {availability_mode})"
+    )
 
     # Check availability based on mode
     available, reason = _check_availability_by_mode(start_dt, end_dt, availability_mode)
@@ -63,7 +65,7 @@ def check_mock_availability(
     return {
         "available": available,
         "reason": reason,
-        "alternative_times": alternative_times
+        "alternative_times": alternative_times,
     }
 
 
@@ -90,9 +92,7 @@ def _parse_datetime(dt_value: Union[datetime, str]) -> Optional[datetime]:
 
 
 def _check_availability_by_mode(
-    start_dt: datetime,
-    end_dt: datetime,
-    mode: str
+    start_dt: datetime, end_dt: datetime, mode: str
 ) -> Tuple[bool, str]:
     """Check availability based on the specified mode.
 
@@ -118,8 +118,11 @@ def _check_availability_by_mode(
         start_time = start_dt.time()
         end_time = end_dt.time()
 
-        if (start_time >= business_start and end_time <= business_end and
-                start_dt.date() == end_dt.date()):
+        if (
+            start_time >= business_start
+            and end_time <= business_end
+            and start_dt.date() == end_dt.date()
+        ):
             return True, "Time slot is within business hours"
         else:
             return False, "Time slot is outside business hours (9 AM - 5 PM)"
@@ -138,7 +141,9 @@ def _check_availability_by_mode(
         return False, "Calendar is busy during this time"
 
 
-def _generate_alternative_times(start_dt: datetime, end_dt: datetime, num_alternatives: int = 3) -> list:
+def _generate_alternative_times(
+    start_dt: datetime, end_dt: datetime, num_alternatives: int = 3
+) -> list:
     """Generate mock alternative time slots.
 
     Args:

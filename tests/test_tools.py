@@ -15,6 +15,7 @@ from imap_mcp.tools import ConfirmationResult, register_tools, require_confirmat
 
 # --- Shared fixtures ---
 
+
 @pytest.fixture
 def mock_email() -> Any:
     """Create a mock email object."""
@@ -59,6 +60,7 @@ def tools(mock_client: Any) -> Any:
         def decorator(func: Any) -> Any:
             stored_tools[func.__name__] = func
             return func
+
         return decorator
 
     mcp.tool = mock_tool_decorator
@@ -89,7 +91,7 @@ class TestTools:
     @pytest.fixture(autouse=True)
     def patch_get_client(self, mock_client: Any) -> None:
         """Patch get_client_from_context for this class only."""
-        with patch('imap_mcp.tools.get_client_from_context') as mock_get_client:
+        with patch("imap_mcp.tools.get_client_from_context") as mock_get_client:
             mock_get_client.return_value = mock_client
             yield mock_get_client
 
@@ -102,7 +104,9 @@ class TestTools:
         return _make_confirmed_context()
 
     @pytest.mark.asyncio
-    async def test_move_email(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
+    async def test_move_email(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
         """Test moving an email from one folder to another."""
         # Get the move_email function
         move_email = tools["move_email"]
@@ -122,7 +126,9 @@ class TestTools:
         assert "Error" in result
 
     @pytest.mark.asyncio
-    async def test_mark_as_read(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
+    async def test_mark_as_read(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
         """Test marking an email as read."""
         # Get the mark_as_read function
         mark_as_read = tools["mark_as_read"]
@@ -142,7 +148,9 @@ class TestTools:
         assert "Failed to mark email as read" in result
 
     @pytest.mark.asyncio
-    async def test_mark_as_unread(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
+    async def test_mark_as_unread(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
         """Test marking an email as unread."""
         # Get the mark_as_unread function
         mark_as_unread = tools["mark_as_unread"]
@@ -166,7 +174,9 @@ class TestTools:
         assert "Error" in result
 
     @pytest.mark.asyncio
-    async def test_flag_email(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
+    async def test_flag_email(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
         """Test flagging and unflagging an email."""
         # Get the flag_email function
         flag_email = tools["flag_email"]
@@ -189,7 +199,9 @@ class TestTools:
         assert "Email unflagged" in result
 
     @pytest.mark.asyncio
-    async def test_delete_email(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
+    async def test_delete_email(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
         """Test deleting an email."""
         # Get the delete_email function
         delete_email = tools["delete_email"]
@@ -214,7 +226,9 @@ class TestTools:
         assert "Error" in result
 
     @pytest.mark.asyncio
-    async def test_search_emails(self, tools: Any, mock_client: Any, mock_context: Any, mock_email: Any) -> None:
+    async def test_search_emails(
+        self, tools: Any, mock_client: Any, mock_context: Any, mock_email: Any
+    ) -> None:
         """Test searching for emails."""
         # Get the search_emails function
         search_emails = tools["search_emails"]
@@ -258,7 +272,9 @@ class TestTools:
         assert "Invalid search criteria" in result
 
     @pytest.mark.asyncio
-    async def test_process_email(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
+    async def test_process_email(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
         """Test processing an email with multiple actions."""
         # Get the process_email function
         process_email = tools["process_email"]
@@ -324,7 +340,9 @@ class TestTools:
         assert "not found" in result
 
     @pytest.mark.asyncio
-    async def test_tool_error_handling(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
+    async def test_tool_error_handling(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
         """Test error handling in tools."""
         # Get tools to test
         move_email = tools["move_email"]
@@ -348,7 +366,9 @@ class TestTools:
         assert "[]" in result or result == "[]"
 
     @pytest.mark.asyncio
-    async def test_tool_parameter_validation(self, tools: Any, mock_client: Any, mock_context: Any) -> None:
+    async def test_tool_parameter_validation(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
         """Test parameter validation in tools."""
         # Get tools to test
         search_emails = tools["search_emails"]
@@ -363,7 +383,9 @@ class TestTools:
         assert "Target folder must be specified" in result
 
         # Test process_email with invalid action
-        result = await process_email("INBOX", 123, "nonexistent_action", ctx=mock_context)
+        result = await process_email(
+            "INBOX", 123, "nonexistent_action", ctx=mock_context
+        )
         assert "Invalid action" in result
 
 
@@ -404,111 +426,135 @@ class TestConfirmation:
         return context
 
     @pytest.mark.asyncio
-    async def test_delete_email_confirmation_declined(self, tools: Any, mock_client: Any, declined_context: Any) -> None:
+    async def test_delete_email_confirmation_declined(
+        self, tools: Any, mock_client: Any, declined_context: Any
+    ) -> None:
         """Test that declining confirmation prevents deletion."""
         delete_email = tools["delete_email"]
 
-        with patch('imap_mcp.tools.get_client_from_context', return_value=mock_client):
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
             result = await delete_email("INBOX", 123, declined_context)
 
         assert "cancelled" in result.lower()
         mock_client.delete_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_delete_email_confirmation_not_confirmed(self, tools: Any, mock_client: Any, not_confirmed_context: Any) -> None:
+    async def test_delete_email_confirmation_not_confirmed(
+        self, tools: Any, mock_client: Any, not_confirmed_context: Any
+    ) -> None:
         """Test that accepting with confirmed=False prevents deletion."""
         delete_email = tools["delete_email"]
 
-        with patch('imap_mcp.tools.get_client_from_context', return_value=mock_client):
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
             result = await delete_email("INBOX", 123, not_confirmed_context)
 
         assert "cancelled" in result.lower()
         mock_client.delete_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_delete_email_confirmation_cancelled(self, tools: Any, mock_client: Any, cancelled_context: Any) -> None:
+    async def test_delete_email_confirmation_cancelled(
+        self, tools: Any, mock_client: Any, cancelled_context: Any
+    ) -> None:
         """Test that cancelling confirmation prevents deletion."""
         delete_email = tools["delete_email"]
 
-        with patch('imap_mcp.tools.get_client_from_context', return_value=mock_client):
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
             result = await delete_email("INBOX", 123, cancelled_context)
 
         assert "cancelled" in result.lower()
         mock_client.delete_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_move_email_confirmation_declined(self, tools: Any, mock_client: Any, declined_context: Any) -> None:
+    async def test_move_email_confirmation_declined(
+        self, tools: Any, mock_client: Any, declined_context: Any
+    ) -> None:
         """Test that declining confirmation prevents move."""
         move_email = tools["move_email"]
 
-        with patch('imap_mcp.tools.get_client_from_context', return_value=mock_client):
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
             result = await move_email("INBOX", 123, "Archive", declined_context)
 
         assert "cancelled" in result.lower()
         mock_client.move_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_process_email_delete_requires_confirmation(self, tools: Any, mock_client: Any, declined_context: Any) -> None:
+    async def test_process_email_delete_requires_confirmation(
+        self, tools: Any, mock_client: Any, declined_context: Any
+    ) -> None:
         """Test that process_email with delete action requires confirmation."""
         process_email = tools["process_email"]
 
-        with patch('imap_mcp.tools.get_client_from_context', return_value=mock_client):
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
             result = await process_email("INBOX", 123, "delete", declined_context)
 
         assert "cancelled" in result.lower()
         mock_client.delete_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_process_email_move_requires_confirmation(self, tools: Any, mock_client: Any, declined_context: Any) -> None:
+    async def test_process_email_move_requires_confirmation(
+        self, tools: Any, mock_client: Any, declined_context: Any
+    ) -> None:
         """Test that process_email with move action requires confirmation."""
         process_email = tools["process_email"]
 
-        with patch('imap_mcp.tools.get_client_from_context', return_value=mock_client):
-            result = await process_email("INBOX", 123, "move", declined_context, target_folder="Archive")
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = await process_email(
+                "INBOX", 123, "move", declined_context, target_folder="Archive"
+            )
 
         assert "cancelled" in result.lower()
         mock_client.move_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_process_email_read_no_confirmation(self, tools: Any, mock_client: Any, confirmed_context: Any) -> None:
+    async def test_process_email_read_no_confirmation(
+        self, tools: Any, mock_client: Any, confirmed_context: Any
+    ) -> None:
         """Test that process_email with read action does NOT require confirmation."""
         process_email = tools["process_email"]
 
-        with patch('imap_mcp.tools.get_client_from_context', return_value=mock_client):
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
             result = await process_email("INBOX", 123, "read", confirmed_context)
 
         assert "Email marked as read" in result
         confirmed_context.elicit.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_process_email_flag_no_confirmation(self, tools: Any, mock_client: Any, confirmed_context: Any) -> None:
+    async def test_process_email_flag_no_confirmation(
+        self, tools: Any, mock_client: Any, confirmed_context: Any
+    ) -> None:
         """Test that process_email with flag action does NOT require confirmation."""
         process_email = tools["process_email"]
 
-        with patch('imap_mcp.tools.get_client_from_context', return_value=mock_client):
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
             result = await process_email("INBOX", 123, "flag", confirmed_context)
 
         assert "Email flagged" in result
         confirmed_context.elicit.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_elicitation_not_supported_aborts_delete(self, tools: Any, mock_client: Any, unsupported_context: Any) -> None:
+    async def test_elicitation_not_supported_aborts_delete(
+        self, tools: Any, mock_client: Any, unsupported_context: Any
+    ) -> None:
         """Test that when elicitation raises, delete is aborted with error."""
         delete_email = tools["delete_email"]
 
-        with patch('imap_mcp.tools.get_client_from_context', return_value=mock_client):
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
             result = await delete_email("INBOX", 123, unsupported_context)
 
         assert "aborted" in result.lower() or "error" in result.lower()
         mock_client.delete_email.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_skip_confirmation_env_var(self, tools: Any, mock_client: Any, declined_context: Any) -> None:
+    async def test_skip_confirmation_env_var(
+        self, tools: Any, mock_client: Any, declined_context: Any
+    ) -> None:
         """Test that IMAP_MCP_SKIP_CONFIRMATION=true bypasses confirmation."""
         delete_email = tools["delete_email"]
 
-        with patch('imap_mcp.tools.get_client_from_context', return_value=mock_client), \
-             patch.dict(os.environ, {"IMAP_MCP_SKIP_CONFIRMATION": "true"}):
+        with (
+            patch("imap_mcp.tools.get_client_from_context", return_value=mock_client),
+            patch.dict(os.environ, {"IMAP_MCP_SKIP_CONFIRMATION": "true"}),
+        ):
             result = await delete_email("INBOX", 123, declined_context)
 
         assert "Email deleted" in result
@@ -657,6 +703,7 @@ class TestSearchEmailsFolderEnforcement:
             def decorator(func: Any) -> Any:
                 stored_tools[func.__name__] = func
                 return func
+
             return decorator
 
         mcp.tool = mock_tool_decorator
@@ -677,7 +724,7 @@ class TestSearchEmailsFolderEnforcement:
 
         ctx = _make_confirmed_context()
 
-        with patch('imap_mcp.tools.get_client_from_context', return_value=client):
+        with patch("imap_mcp.tools.get_client_from_context", return_value=client):
             await search_emails("test", ctx, folder=None)
 
         # list_folders should be called once (to discover folders)
@@ -705,7 +752,7 @@ class TestSearchEmailsFolderEnforcement:
 
         ctx = _make_confirmed_context()
 
-        with patch('imap_mcp.tools.get_client_from_context', return_value=client):
+        with patch("imap_mcp.tools.get_client_from_context", return_value=client):
             result = await search_emails("test", ctx, folder="Trash")
 
         # The search catches exceptions and continues — result should be empty
@@ -726,7 +773,7 @@ class TestSearchEmailsFolderEnforcement:
 
         ctx = _make_confirmed_context()
 
-        with patch('imap_mcp.tools.get_client_from_context', return_value=client):
+        with patch("imap_mcp.tools.get_client_from_context", return_value=client):
             await search_emails("test", ctx, folder=None)
 
         # list_folders should be called once
@@ -747,7 +794,7 @@ class TestToolFolderValidation:
     @pytest.fixture(autouse=True)
     def patch_get_client(self, mock_client: Any) -> None:
         """Patch get_client_from_context for this class only."""
-        with patch('imap_mcp.tools.get_client_from_context') as mock_get_client:
+        with patch("imap_mcp.tools.get_client_from_context") as mock_get_client:
             mock_get_client.return_value = mock_client
             yield mock_get_client
 
@@ -810,9 +857,7 @@ class TestToolFolderValidation:
         )
         search_emails = tools["search_emails"]
 
-        result = await search_emails(
-            "test query", mock_context, folder="BAD\x00FOLDER"
-        )
+        result = await search_emails("test query", mock_context, folder="BAD\x00FOLDER")
 
         assert "Invalid folder name" in result
         mock_client.search.assert_not_called()
@@ -822,6 +867,7 @@ class TestToolFolderValidation:
         self, tools: Any, mock_client: Any, mock_context: Any
     ) -> None:
         """Test that process_email rejects invalid target_folder for move."""
+
         # Source folder passes validation, target folder fails
         def validate_side_effect(folder: str) -> None:
             if folder == "INBOX":
@@ -846,7 +892,7 @@ class TestProcessEmailFailurePaths:
     @pytest.fixture(autouse=True)
     def patch_get_client(self, mock_client: Any) -> None:
         """Patch get_client_from_context for this class only."""
-        with patch('imap_mcp.tools.get_client_from_context') as mock_get_client:
+        with patch("imap_mcp.tools.get_client_from_context") as mock_get_client:
             mock_get_client.return_value = mock_client
             yield mock_get_client
 
@@ -920,9 +966,7 @@ class TestProcessEmailFailurePaths:
         result = await process_email("INBOX", 123, "unflag", mock_context)
 
         assert "Failed" in result
-        mock_client.mark_email.assert_called_once_with(
-            123, "INBOX", "\\Flagged", False
-        )
+        mock_client.mark_email.assert_called_once_with(123, "INBOX", "\\Flagged", False)
 
     @pytest.mark.asyncio
     async def test_process_email_delete_returns_failure(

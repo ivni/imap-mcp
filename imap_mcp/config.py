@@ -50,9 +50,7 @@ def create_ssl_context(ca_bundle: Optional[str] = None) -> ssl.SSLContext:
     if ca_bundle:
         bundle_path = Path(ca_bundle)
         if not bundle_path.exists():
-            raise FileNotFoundError(
-                f"TLS CA bundle file not found: {ca_bundle}"
-            )
+            raise FileNotFoundError(f"TLS CA bundle file not found: {ca_bundle}")
         context.load_verify_locations(ca_bundle)
         logger.info("Loaded custom CA bundle: %s", ca_bundle)
     return context
@@ -183,9 +181,7 @@ class ServerConfig:
             )
         elif isinstance(raw_allowed, list) and len(raw_allowed) == 0:
             resolved_allowed = None
-            logger.info(
-                "allowed_folders set to empty list — all folders accessible"
-            )
+            logger.info("allowed_folders set to empty list — all folders accessible")
         else:
             resolved_allowed = raw_allowed
 
@@ -265,10 +261,14 @@ def load_config(config_path: Optional[str] = None) -> ServerConfig:
 
         # Build SMTP config from env vars, falling back to IMAP values
         smtp_host = os.environ.get("SMTP_HOST") or os.environ.get("IMAP_HOST")
-        smtp_username = os.environ.get("SMTP_USERNAME") or os.environ.get("IMAP_USERNAME")
+        smtp_username = os.environ.get("SMTP_USERNAME") or os.environ.get(
+            "IMAP_USERNAME"
+        )
         # SMTP_PASSWORD is resolved in SmtpConfig.from_dict() from env var;
         # also check IMAP_PASSWORD fallback to decide whether to create SMTP config
-        smtp_password = os.environ.get("SMTP_PASSWORD") or os.environ.get("IMAP_PASSWORD")
+        smtp_password = os.environ.get("SMTP_PASSWORD") or os.environ.get(
+            "IMAP_PASSWORD"
+        )
         if smtp_host and smtp_username and smtp_password:
             config_data["smtp"] = {
                 "host": smtp_host,

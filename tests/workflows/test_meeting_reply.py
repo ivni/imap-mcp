@@ -25,7 +25,7 @@ class TestMeetingReply:
             "end_time": datetime(2025, 4, 1, 11, 0, 0),
             "organizer": "John Smith <john@example.com>",
             "location": "Conference Room A",
-            "description": "Weekly project planning session"
+            "description": "Weekly project planning session",
         }
 
     @pytest.fixture
@@ -34,7 +34,7 @@ class TestMeetingReply:
         return {
             "available": True,
             "reason": "Time slot is available",
-            "alternative_times": []
+            "alternative_times": [],
         }
 
     @pytest.fixture
@@ -43,7 +43,7 @@ class TestMeetingReply:
         return {
             "available": False,
             "reason": "Calendar is busy during this time",
-            "alternative_times": []
+            "alternative_times": [],
         }
 
     def test_format_meeting_time_same_day(self) -> None:
@@ -107,7 +107,9 @@ class TestMeetingReply:
         location = "Conference Room A"
         reason = "Schedule conflict"
 
-        result = _generate_decline_reply(subject, formatted_time, organizer, location, reason)
+        result = _generate_decline_reply(
+            subject, formatted_time, organizer, location, reason
+        )
 
         assert isinstance(result, dict)
         assert "reply_subject" in result
@@ -119,9 +121,13 @@ class TestMeetingReply:
         assert formatted_time in result["reply_body"]
         assert reason in result["reply_body"]
 
-    def test_generate_meeting_reply_content_accept(self, sample_invite_details: Any, sample_availability_accept: Any) -> None:
+    def test_generate_meeting_reply_content_accept(
+        self, sample_invite_details: Any, sample_availability_accept: Any
+    ) -> None:
         """Test generating meeting reply content for an accepted meeting."""
-        result = generate_meeting_reply_content(sample_invite_details, sample_availability_accept)
+        result = generate_meeting_reply_content(
+            sample_invite_details, sample_availability_accept
+        )
 
         assert isinstance(result, dict)
         assert "reply_subject" in result
@@ -133,9 +139,13 @@ class TestMeetingReply:
         assert "I'll attend" in result["reply_body"]
         assert sample_invite_details["location"] in result["reply_body"]
 
-    def test_generate_meeting_reply_content_decline(self, sample_invite_details: Any, sample_availability_decline: Any) -> None:
+    def test_generate_meeting_reply_content_decline(
+        self, sample_invite_details: Any, sample_availability_decline: Any
+    ) -> None:
         """Test generating meeting reply content for a declined meeting."""
-        result = generate_meeting_reply_content(sample_invite_details, sample_availability_decline)
+        result = generate_meeting_reply_content(
+            sample_invite_details, sample_availability_decline
+        )
 
         assert isinstance(result, dict)
         assert "reply_subject" in result

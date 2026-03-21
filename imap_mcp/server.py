@@ -129,9 +129,7 @@ def create_server(
 
         from imap_mcp.auth import OIDCJWTVerifier, discover_jwks_uri
 
-        jwks_uri = os.environ.get("OIDC_JWKS_URI") or discover_jwks_uri(
-            oidc_issuer
-        )
+        jwks_uri = os.environ.get("OIDC_JWKS_URI") or discover_jwks_uri(oidc_issuer)
         audience = os.environ.get("OIDC_AUDIENCE")
         mcp_server_url = os.environ.get(
             "MCP_RESOURCE_SERVER_URL", f"http://{host}:{port}/mcp"
@@ -247,7 +245,9 @@ def main() -> None:
     )
 
     # Start the server
-    logger.info("Starting server{}...".format(" in development mode" if args.dev else ""))
+    logger.info(
+        "Starting server{}...".format(" in development mode" if args.dev else "")
+    )
     server.run(transport=args.transport)
 
 
