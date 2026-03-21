@@ -227,6 +227,8 @@ def discover_jwks_uri(issuer_url: str) -> str:
     try:
         with urllib.request.urlopen(discovery_url, timeout=10) as response:  # nosec B310 - scheme validated by _validate_issuer_url (HTTPS only)
             config = json.loads(response.read().decode())
+            if not isinstance(config, dict):
+                raise ValueError("OIDC discovery document is not a JSON object")
             jwks_uri = config.get("jwks_uri")
             if jwks_uri:
                 return str(jwks_uri)

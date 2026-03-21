@@ -482,7 +482,7 @@ class ImapClient:
             try:
                 references_results = self.search(references_query, folder)
                 thread_uids.update(references_results)
-            except (IMAPClientError, OSError) as e:
+            except (IMAPClientError, OSError, ValueError) as e:
                 logger.warning(f"Error searching for References: {e}")
 
             # Look for direct replies to this message
@@ -490,7 +490,7 @@ class ImapClient:
             try:
                 inreplyto_results = self.search(inreplyto_query, folder)
                 thread_uids.update(inreplyto_results)
-            except (IMAPClientError, OSError) as e:
+            except (IMAPClientError, OSError, ValueError) as e:
                 logger.warning(f"Error searching for In-Reply-To: {e}")
 
             # If the initial email has References or In-Reply-To, fetch those messages too
@@ -504,7 +504,7 @@ class ImapClient:
                     try:
                         results = self.search(query, folder)
                         thread_uids.update(results)
-                    except (IMAPClientError, OSError) as e:
+                    except (IMAPClientError, OSError, ValueError) as e:
                         logger.warning(
                             f"Error searching for Referenced message {ref_id}: {e}"
                         )
@@ -515,7 +515,7 @@ class ImapClient:
                 try:
                     results = self.search(query, folder)
                     thread_uids.update(results)
-                except (IMAPClientError, OSError) as e:
+                except (IMAPClientError, OSError, ValueError) as e:
                     logger.warning(f"Error searching for In-Reply-To message: {e}")
 
         # If we still have only the initial email or a small thread, try subject-based matching
@@ -551,7 +551,7 @@ class ImapClient:
                             strict_matches.append(candidate_uid)
 
                     thread_uids.update(strict_matches)
-            except (IMAPClientError, OSError) as e:
+            except (IMAPClientError, OSError, ValueError) as e:
                 logger.warning(f"Error searching by subject: {e}")
 
         # Fetch all discovered thread emails

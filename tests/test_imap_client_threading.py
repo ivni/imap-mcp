@@ -431,6 +431,48 @@ class TestImapClientThreading(unittest.TestCase):
         assert thread_emails[0].uid == initial_uid
         assert thread_emails[1].uid == reply_uid
 
+    def test_fetch_thread_non_ascii_subject_graceful(self) -> None:
+        """Test that fetch_thread handles non-ASCII subjects gracefully.
+
+        When a subject contains non-ASCII characters and charset=None,
+        imapclient raises UnicodeEncodeError during search criteria
+        encoding. This should be caught and not abort the thread fetch.
+        """
+        initial_uid = 500
+        initial_message_id = "<unicode-thread@example.com>"
+
+        initial_email = self.create_mock_email(
+            uid=initial_uid,
+            message_id=initial_message_id,
+            subject="Re: Привет мир",  # Cyrillic subject
+            sender="person1@example.com",
+            to="person2@example.com",
+            date=datetime.now(),
+            body_text="Unicode subject message",
+        )
+
+        self.mock_client.fetch.side_effect = [
+            {initial_uid: initial_email},
+            {initial_uid: initial_email},
+        ]
+
+        # Simulate UnicodeEncodeError on subject-based search (raw imapclient API)
+        def search_side_effect(
+            criteria: object, charset: Optional[str] = None
+        ) -> SearchIds:
+            if isinstance(criteria, list) and "SUBJECT" in criteria:
+                raise UnicodeEncodeError(
+                    "ascii", "Привет", 0, 1, "ordinal not in range(128)"
+                )
+            return SearchIds([])
+
+        self.mock_client.search.side_effect = search_side_effect
+
+        # Should NOT raise — the error should be caught gracefully
+        thread_emails = self.imap_client.fetch_thread(initial_uid)
+        assert len(thread_emails) >= 1
+        assert thread_emails[0].uid == initial_uid
+
     def test_fetch_thread_with_many_messages(self) -> None:
         """Test performance when fetching threads with many messages."""
         initial_uid = 300

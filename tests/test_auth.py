@@ -363,6 +363,20 @@ class TestDiscoverJWKSUri:
             with pytest.raises(ValueError, match="does not contain 'jwks_uri'"):
                 discover_jwks_uri("https://auth.example.com/application/o/test/")
 
+    def test_discovery_non_dict_json_raises_error(self) -> None:
+        """Test that non-dict JSON in discovery document raises ValueError."""
+        discovery_response = json.dumps([1, 2, 3]).encode()
+
+        with mock.patch("urllib.request.urlopen") as mock_urlopen:
+            mock_response = mock.MagicMock()
+            mock_response.read.return_value = discovery_response
+            mock_response.__enter__ = mock.MagicMock(return_value=mock_response)
+            mock_response.__exit__ = mock.MagicMock(return_value=False)
+            mock_urlopen.return_value = mock_response
+
+            with pytest.raises(ValueError, match="not a JSON object"):
+                discover_jwks_uri("https://auth.example.com/application/o/test/")
+
     def test_trailing_slash_handling(self) -> None:
         """Test that trailing slash is handled correctly in discovery URL."""
         discovery_response = json.dumps(
