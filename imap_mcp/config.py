@@ -233,14 +233,14 @@ def load_config(config_path: Optional[str] = None) -> ServerConfig:
                 logger.info(f"Loaded configuration from {expanded_path}")
                 break
 
-    # If environment variables are set, they take precedence
-    if not config_data:
+    # When no config file is found, bootstrap config_data from env vars
+    config_from_yaml = bool(config_data)
+    if not config_from_yaml:
         logger.info("No configuration file found, using environment variables")
         if not os.environ.get("IMAP_HOST"):
             raise ValueError(
                 "No configuration file found and IMAP_HOST environment variable not set"
             )
-
         config_data = {
             "imap": {
                 "host": os.environ.get("IMAP_HOST"),
@@ -250,20 +250,50 @@ def load_config(config_path: Optional[str] = None) -> ServerConfig:
             }
         }
 
-        env_allowed = os.environ.get("IMAP_ALLOWED_FOLDERS")
-        if env_allowed is not None:
-            if env_allowed.strip() == "":
-                config_data["allowed_folders"] = []  # Explicit empty = unrestricted
-            else:
-                config_data["allowed_folders"] = [
-                    f.strip() for f in env_allowed.split(",")
-                ]
+    # Environment variable overrides — always applied, env vars take precedence
+    imap_section = config_data.setdefault("imap", {})
+    if os.environ.get("IMAP_HOST"):
+        imap_section["host"] = os.environ["IMAP_HOST"]
+    if os.environ.get("IMAP_PORT"):
+        imap_section["port"] = int(os.environ["IMAP_PORT"])
+    if os.environ.get("IMAP_USERNAME"):
+        imap_section["username"] = os.environ["IMAP_USERNAME"]
+    env_use_ssl = os.environ.get("IMAP_USE_SSL")
+    if env_use_ssl is not None:
+        imap_section["use_ssl"] = env_use_ssl.lower() == "true"
 
-        # Build SMTP config from env vars, falling back to IMAP values
-        smtp_host = os.environ.get("SMTP_HOST") or os.environ.get("IMAP_HOST")
-        smtp_username = os.environ.get("SMTP_USERNAME") or os.environ.get(
-            "IMAP_USERNAME"
-        )
+    env_allowed = os.environ.get("IMAP_ALLOWED_FOLDERS")
+    if env_allowed is not None:
+        if env_allowed.strip() == "":
+            config_data["allowed_folders"] = []  # Explicit empty = unrestricted
+        else:
+            config_data["allowed_folders"] = [f.strip() for f in env_allowed.split(",")]
+
+    # SMTP env var overrides / auto-creation
+    smtp_host_env = os.environ.get("SMTP_HOST")
+    smtp_port_env = os.environ.get("SMTP_PORT")
+    smtp_username_env = os.environ.get("SMTP_USERNAME")
+    smtp_use_tls_env = os.environ.get("SMTP_USE_TLS")
+
+    if "smtp" in config_data:
+        # Override individual fields in existing SMTP config
+        smtp_section = config_data["smtp"]
+        if smtp_host_env:
+            smtp_section["host"] = smtp_host_env
+        if smtp_port_env:
+            smtp_section["port"] = int(smtp_port_env)
+        if smtp_username_env:
+            smtp_section["username"] = smtp_username_env
+        if smtp_use_tls_env is not None:
+            smtp_section["use_tls"] = smtp_use_tls_env.lower() == "true"
+    else:
+        # Auto-create SMTP from env vars; use IMAP fallbacks only when no YAML
+        if config_from_yaml:
+            smtp_host = smtp_host_env
+            smtp_username = smtp_username_env
+        else:
+            smtp_host = smtp_host_env or os.environ.get("IMAP_HOST")
+            smtp_username = smtp_username_env or os.environ.get("IMAP_USERNAME")
         # SMTP_PASSWORD is resolved in SmtpConfig.from_dict() from env var;
         # also check IMAP_PASSWORD fallback to decide whether to create SMTP config
         smtp_password = os.environ.get("SMTP_PASSWORD") or os.environ.get(
@@ -272,9 +302,13 @@ def load_config(config_path: Optional[str] = None) -> ServerConfig:
         if smtp_host and smtp_username and smtp_password:
             config_data["smtp"] = {
                 "host": smtp_host,
-                "port": int(os.environ.get("SMTP_PORT", "587")),
+                "port": int(smtp_port_env) if smtp_port_env else 587,
                 "username": smtp_username,
-                "use_tls": os.environ.get("SMTP_USE_TLS", "true").lower() == "true",
+                "use_tls": (
+                    smtp_use_tls_env.lower() == "true"
+                    if smtp_use_tls_env is not None
+                    else True
+                ),
             }
 
     # Create config object

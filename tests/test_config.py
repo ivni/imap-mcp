@@ -950,6 +950,189 @@ class TestLoadConfig:
         config = load_config(str(config_file))
         assert config.allowed_folders == ["INBOX"]
 
+    def test_env_overrides_imap_settings_over_yaml(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Test that IMAP env vars override YAML config values."""
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+        monkeypatch.setenv("IMAP_HOST", "env-host.example.com")
+        monkeypatch.setenv("IMAP_PORT", "143")
+        monkeypatch.setenv("IMAP_USERNAME", "env@example.com")
+        monkeypatch.setenv("IMAP_USE_SSL", "false")
+
+        config_data = {
+            "imap": {
+                "host": "yaml-host.example.com",
+                "port": 993,
+                "username": "yaml@example.com",
+                "use_ssl": True,
+            }
+        }
+
+        config_file = tmp_path / "config.yaml"
+        with open(config_file, "w") as f:
+            yaml.dump(config_data, f)
+
+        config = load_config(str(config_file))
+        assert config.imap.host == "env-host.example.com"
+        assert config.imap.port == 143
+        assert config.imap.username == "env@example.com"
+        assert config.imap.use_ssl is False
+
+    def test_env_overrides_allowed_folders_over_yaml(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Test that IMAP_ALLOWED_FOLDERS env var overrides YAML (security-critical)."""
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+        monkeypatch.setenv("IMAP_ALLOWED_FOLDERS", "INBOX")
+
+        config_data = {
+            "imap": {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+            },
+            "allowed_folders": [],  # YAML says unrestricted
+        }
+
+        config_file = tmp_path / "config.yaml"
+        with open(config_file, "w") as f:
+            yaml.dump(config_data, f)
+
+        config = load_config(str(config_file))
+        # Env var must win: restricted to INBOX only
+        assert config.allowed_folders == ["INBOX"]
+
+    def test_env_overrides_allowed_folders_empty_over_yaml(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Test that empty IMAP_ALLOWED_FOLDERS env var means unrestricted."""
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+        monkeypatch.setenv("IMAP_ALLOWED_FOLDERS", "")
+
+        config_data = {
+            "imap": {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+            },
+            "allowed_folders": ["INBOX", "Sent"],
+        }
+
+        config_file = tmp_path / "config.yaml"
+        with open(config_file, "w") as f:
+            yaml.dump(config_data, f)
+
+        config = load_config(str(config_file))
+        # Empty env var = unrestricted (None after ServerConfig.from_dict)
+        assert config.allowed_folders is None
+
+    def test_env_overrides_smtp_settings_over_yaml(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Test that SMTP env vars override YAML SMTP config."""
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+        monkeypatch.setenv("SMTP_PASSWORD", "smtp_password")
+        monkeypatch.setenv("SMTP_HOST", "env-smtp.example.com")
+        monkeypatch.setenv("SMTP_PORT", "587")
+        monkeypatch.setenv("SMTP_USERNAME", "env-smtp@example.com")
+        monkeypatch.setenv("SMTP_USE_TLS", "true")
+
+        config_data = {
+            "imap": {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+            },
+            "smtp": {
+                "host": "yaml-smtp.example.com",
+                "port": 465,
+                "username": "yaml-smtp@example.com",
+                "use_tls": False,
+            },
+        }
+
+        config_file = tmp_path / "config.yaml"
+        with open(config_file, "w") as f:
+            yaml.dump(config_data, f)
+
+        config = load_config(str(config_file))
+        assert config.smtp is not None
+        assert config.smtp.host == "env-smtp.example.com"
+        assert config.smtp.port == 587
+        assert config.smtp.username == "env-smtp@example.com"
+        assert config.smtp.use_tls is True
+
+    def test_env_creates_smtp_when_yaml_has_none(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Test that SMTP env vars create SMTP config when YAML has no SMTP."""
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+        monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+        monkeypatch.setenv("SMTP_USERNAME", "smtp@example.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "smtp_password")
+
+        config_data = {
+            "imap": {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+            }
+        }
+
+        config_file = tmp_path / "config.yaml"
+        with open(config_file, "w") as f:
+            yaml.dump(config_data, f)
+
+        config = load_config(str(config_file))
+        assert config.smtp is not None
+        assert config.smtp.host == "smtp.example.com"
+        assert config.smtp.username == "smtp@example.com"
+
+    def test_yaml_smtp_not_autocreated_from_imap_fallback(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Test that SMTP is NOT auto-created from IMAP fallback when YAML exists."""
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+        # No SMTP-specific env vars — only IMAP vars exist
+
+        config_data = {
+            "imap": {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+            }
+        }
+
+        config_file = tmp_path / "config.yaml"
+        with open(config_file, "w") as f:
+            yaml.dump(config_data, f)
+
+        config = load_config(str(config_file))
+        assert config.smtp is None
+
+    def test_env_partial_imap_override_preserves_yaml_values(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Test that partial env var overrides preserve other YAML values."""
+        monkeypatch.setenv("IMAP_PASSWORD", "env_password")
+        monkeypatch.setenv("IMAP_HOST", "overridden-host.example.com")
+        # Do NOT set IMAP_PORT, IMAP_USERNAME, IMAP_USE_SSL
+
+        config_data = {
+            "imap": {
+                "host": "yaml-host.example.com",
+                "port": 993,
+                "username": "yaml@example.com",
+                "use_ssl": True,
+            }
+        }
+
+        config_file = tmp_path / "config.yaml"
+        with open(config_file, "w") as f:
+            yaml.dump(config_data, f)
+
+        config = load_config(str(config_file))
+        assert config.imap.host == "overridden-host.example.com"
+        assert config.imap.port == 993
+        assert config.imap.username == "yaml@example.com"
+        assert config.imap.use_ssl is True
+
     def test_invalid_config(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:

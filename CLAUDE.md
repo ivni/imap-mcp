@@ -8,6 +8,7 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 - NEVER use f-strings or string formatting to build IMAP commands — use imapclient's parameterized API to prevent IMAP injection
 - NEVER store secrets (passwords) in code, sample configs, or test fixtures — use environment variables only
 - Passwords ONLY from environment variables (`IMAP_PASSWORD`, `SMTP_PASSWORD`) — `config.yaml` password field is ignored with a warning
+- Environment variables ALWAYS override YAML config values (`IMAP_HOST`, `IMAP_PORT`, `IMAP_USERNAME`, `IMAP_USE_SSL`, `IMAP_ALLOWED_FOLDERS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_USE_TLS`)
 - NEVER commit files matching: `config.yaml*`, `.env*`
 - MUST validate all MCP tool input parameters:
   - Folder names sanitized against IMAP injection characters (`_validate_folder_name`) and checked against `allowed_folders` when configured
