@@ -1,5 +1,6 @@
 """Tests for the IMAP client."""
 
+from datetime import datetime, timedelta
 from typing import Any, Callable, Dict
 from unittest.mock import MagicMock, patch
 
@@ -7,7 +8,7 @@ import pytest
 from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 
 from imap_mcp.config import ImapConfig
-from imap_mcp.imap_client import MAX_FETCH_UIDS, ImapClient
+from imap_mcp.imap_client import _FOLDER_CACHE_TTL_SECONDS, MAX_FETCH_UIDS, ImapClient
 from imap_mcp.models import Email
 
 
@@ -29,6 +30,7 @@ class TestImapClient:
         assert client.allowed_folders is None
         assert client.client is None
         assert client.folder_cache == {}
+        assert client._folder_cache_timestamp is None
         assert client.connected is False
 
         # Test with allowed folders
@@ -304,6 +306,7 @@ class TestImapClient:
             "Sent": [b"\\HasNoChildren"],
             "Trash": [b"\\HasNoChildren"],
         }
+        client._folder_cache_timestamp = datetime.now()
 
         with patch("imapclient.IMAPClient") as mock_client_class:
             mock_client_class.return_value = mock_imap_client
@@ -365,6 +368,72 @@ class TestImapClient:
 
             # Verify cache was updated
             assert set(client.folder_cache.keys()) == {"INBOX", "Sent", "Drafts"}
+            assert client._folder_cache_timestamp is not None
+
+    def test_list_folders_cache_expired(self, mock_imap_client: MagicMock) -> None:
+        """Test that expired cache triggers server refresh."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        # Populate cache with old data and an expired timestamp
+        client.folder_cache = {
+            "INBOX": [b"\\HasNoChildren"],
+            "OldFolder": [b"\\HasNoChildren"],
+        }
+        client._folder_cache_timestamp = datetime.now() - timedelta(
+            seconds=_FOLDER_CACHE_TTL_SECONDS + 1
+        )
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+
+            mock_imap_client.list_folders.return_value = [
+                ((b"\\HasNoChildren",), b"/", "INBOX"),
+                ((b"\\HasNoChildren",), b"/", "NewFolder"),
+            ]
+
+            client.connect()
+
+            folders = client.list_folders(refresh=False)
+
+            mock_imap_client.list_folders.assert_called_once()
+            assert set(folders) == {"INBOX", "NewFolder"}
+            assert set(client.folder_cache.keys()) == {"INBOX", "NewFolder"}
+            assert client._folder_cache_timestamp is not None
+
+    def test_folder_cache_valid_states(self) -> None:
+        """Test _is_folder_cache_valid for various states."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        # Empty cache
+        assert client._is_folder_cache_valid() is False
+
+        # Cache populated but no timestamp
+        client.folder_cache = {"INBOX": [b"\\HasNoChildren"]}
+        assert client._is_folder_cache_valid() is False
+
+        # Fresh cache
+        client._folder_cache_timestamp = datetime.now()
+        assert client._is_folder_cache_valid() is True
+
+        # Expired cache
+        client._folder_cache_timestamp = datetime.now() - timedelta(
+            seconds=_FOLDER_CACHE_TTL_SECONDS + 1
+        )
+        assert client._is_folder_cache_valid() is False
 
     def test_list_folders_with_allowed_folders(
         self, mock_imap_client: MagicMock

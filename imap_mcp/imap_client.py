@@ -21,6 +21,7 @@ _INVALID_FOLDER_CHARS = re.compile(r'[\x00\r\n"\\{}]')
 _MAX_FOLDER_NAME_LENGTH = 255
 MAX_FETCH_UIDS = 500
 MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024  # 25 MB
+_FOLDER_CACHE_TTL_SECONDS = 300  # 5 minutes
 
 
 class ImapClient:
@@ -40,10 +41,9 @@ class ImapClient:
         )
         self.client: Optional[imapclient.IMAPClient] = None
         self.folder_cache: Dict[str, List[str]] = {}
+        self._folder_cache_timestamp: Optional[datetime] = None
         self.connected = False
-        self.count_cache: Dict[str, Dict[str, Tuple[int, datetime]]] = {}
         self.current_folder: Optional[str] = None
-        self.folder_message_counts: Dict[str, int] = {}
 
     def connect(self) -> None:
         """Connect to IMAP server.
@@ -137,6 +137,13 @@ class ImapClient:
 
         return capabilities
 
+    def _is_folder_cache_valid(self) -> bool:
+        """Check if folder cache is populated and not expired."""
+        if not self.folder_cache or self._folder_cache_timestamp is None:
+            return False
+        elapsed = (datetime.now() - self._folder_cache_timestamp).total_seconds()
+        return elapsed < _FOLDER_CACHE_TTL_SECONDS
+
     def list_folders(self, refresh: bool = False) -> List[str]:
         """List available folders.
 
@@ -152,12 +159,13 @@ class ImapClient:
         self.ensure_connected()
 
         # Check cache first
-        if not refresh and self.folder_cache:
+        if not refresh and self._is_folder_cache_valid():
             return list(self.folder_cache.keys())
 
         # Get folders from server
         folders = []
         assert self.client is not None
+        self.folder_cache.clear()
         for flags, delimiter, name in self.client.list_folders():
             if isinstance(name, bytes):
                 # Convert bytes to string if necessary
@@ -170,6 +178,7 @@ class ImapClient:
             folders.append(name)
             self.folder_cache[name] = flags
 
+        self._folder_cache_timestamp = datetime.now()
         logger.debug(f"Listed {len(folders)} folders")
         return folders
 
