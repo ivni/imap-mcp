@@ -102,6 +102,7 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 
 - GitHub Actions workflow in `.github/workflows/ci.yml`
 - Runs on push to `main` and pull requests targeting `main`
-- Pipeline: lockfile integrity (`uv lock --check`) → install (`uv sync --frozen`) → dependency audit (`pip-audit`) → lint (ruff + mypy) → unit tests
+- Pipeline (`check` job): lockfile integrity (`uv lock --check`) → install (`uv sync --frozen`) → dependency audit (`pip-audit`) → lint (ruff + mypy) → unit tests
+- Pipeline (`docker` job, parallel): Docker image build → Trivy vulnerability scan (CRITICAL/HIGH, fails on findings)
 - Supply chain security: `uv sync --frozen` verifies all dependency hashes against `uv.lock`
 - Production: `Dockerfile` also uses `uv sync --frozen` for hash-verified installs
