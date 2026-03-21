@@ -1137,3 +1137,42 @@ class TestSearchEmailsPagination:
             result = json.loads(await search_emails("test", mock_context))
         assert result["offset"] == 0
         assert result["total"] == 3
+
+    @pytest.mark.asyncio
+    async def test_negative_offset_rejected(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that negative offset returns an error."""
+        search_emails = tools["search_emails"]
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = json.loads(
+                await search_emails("test", mock_context, offset=-1)
+            )
+        assert "error" in result
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_zero_limit_rejected(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that zero limit returns an error."""
+        search_emails = tools["search_emails"]
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = json.loads(
+                await search_emails("test", mock_context, limit=0)
+            )
+        assert "error" in result
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_negative_limit_rejected(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that negative limit returns an error."""
+        search_emails = tools["search_emails"]
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = json.loads(
+                await search_emails("test", mock_context, limit=-5)
+            )
+        assert "error" in result
+        assert result["results"] == []

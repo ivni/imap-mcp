@@ -506,6 +506,16 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             if error:
                 return error
 
+        empty_response = {"total": 0, "offset": offset, "limit": limit, "results": []}
+        if offset < 0:
+            return json.dumps(
+                {**empty_response, "error": "offset must be >= 0"}, indent=2
+            )
+        if limit <= 0:
+            return json.dumps(
+                {**empty_response, "error": "limit must be > 0"}, indent=2
+            )
+
         # Define search criteria
         search_criteria_map = {
             "text": ["TEXT", query],
