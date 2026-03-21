@@ -383,8 +383,8 @@ class TestImapClient:
 
         # Populate cache with old data and an expired timestamp
         client.folder_cache = {
-            "INBOX": [b"\\HasNoChildren"],
-            "OldFolder": [b"\\HasNoChildren"],
+            "INBOX": ["\\HasNoChildren"],
+            "OldFolder": ["\\HasNoChildren"],
         }
         client._folder_cache_timestamp = datetime.now() - timedelta(
             seconds=_FOLDER_CACHE_TTL_SECONDS + 1
@@ -422,7 +422,7 @@ class TestImapClient:
         assert client._is_folder_cache_valid() is False
 
         # Cache populated but no timestamp
-        client.folder_cache = {"INBOX": [b"\\HasNoChildren"]}
+        client.folder_cache = {"INBOX": ["\\HasNoChildren"]}
         assert client._is_folder_cache_valid() is False
 
         # Fresh cache
