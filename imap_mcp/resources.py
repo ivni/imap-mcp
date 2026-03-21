@@ -29,7 +29,6 @@ def get_client_from_context(ctx: Context) -> ImapClient:
     return client  # type: ignore[no-any-return]
 
 
-
 def register_resources(mcp: FastMCP, imap_client: ImapClient) -> None:
     """Register MCP resources.
 
