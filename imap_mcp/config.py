@@ -222,8 +222,10 @@ def load_config(config_path: Optional[str] = None) -> ServerConfig:
             with open(config_path, "r") as f:
                 config_data = yaml.safe_load(f) or {}
             logger.info(f"Loaded configuration from {config_path}")
-        except FileNotFoundError:
-            logger.warning(f"Configuration file not found: {config_path}")
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f"Configuration file not found: {config_path}"
+            ) from e
     else:
         for path in default_locations:
             expanded_path = path.expanduser()
