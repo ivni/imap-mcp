@@ -626,9 +626,6 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                 uids = client.search(search_criteria, folder=current_folder)
                 total_count += len(uids)
 
-                # Limit results and sort by newest first
-                uids = sorted(uids, reverse=True)[: offset + limit]
-
                 if uids:
                     # Fetch emails
                     emails = client.fetch_emails(uids, folder=current_folder)

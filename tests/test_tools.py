@@ -1168,3 +1168,80 @@ class TestSearchEmailsPagination:
             result = json.loads(await search_emails("test", mock_context, limit=-5))
         assert "error" in result
         assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_multi_folder_pagination_global_date_order(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that multi-folder search paginates by global date order.
+
+        Regression test for #41: per-folder truncation by UID dropped results
+        that belong on the requested page when sorted globally by date.
+
+        Setup: FolderB has UID order *inverse* to date order (low UID = newest).
+        With offset=2, limit=2 the old per-folder truncation ([:4]) dropped
+        FolderB's UID 1 (the globally newest email), producing wrong results.
+        """
+        search_emails = tools["search_emails"]
+
+        # FolderA: 5 emails, UIDs 101-105, dates Jan 1,3,5,7,9
+        # FolderB: 5 emails, UIDs 1-5, dates INVERSE: UID1=Jan10, UID5=Jan2
+        # Global date-desc: 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
+        # Page (offset=2, limit=2) correct answer: Jan 8, Jan 7
+        folder_emails: dict[str, dict[int, Email]] = {}
+
+        folder_a: dict[int, Email] = {}
+        for i in range(5):
+            uid = 101 + i
+            day = 1 + i * 2  # days 1, 3, 5, 7, 9
+            folder_a[uid] = Email(
+                uid=uid,
+                message_id=f"<a{uid}@test.com>",
+                subject=f"Email day {day}",
+                from_=EmailAddress(name="Sender", address="s@test.com"),
+                to=[EmailAddress(name="R", address="r@test.com")],
+                date=datetime(2024, 1, day, tzinfo=timezone.utc),
+                flags=[],
+                attachments=[],
+            )
+        folder_emails["FolderA"] = folder_a
+
+        folder_b: dict[int, Email] = {}
+        for i in range(5):
+            uid = 1 + i
+            day = 10 - i * 2  # UID1=day10, UID2=day8, …, UID5=day2
+            folder_b[uid] = Email(
+                uid=uid,
+                message_id=f"<b{uid}@test.com>",
+                subject=f"Email day {day}",
+                from_=EmailAddress(name="Sender", address="s@test.com"),
+                to=[EmailAddress(name="R", address="r@test.com")],
+                date=datetime(2024, 1, day, tzinfo=timezone.utc),
+                flags=[],
+                attachments=[],
+            )
+        folder_emails["FolderB"] = folder_b
+
+        mock_client.list_folders.return_value = list(folder_emails.keys())
+
+        def search_side_effect(
+            criteria: Any, folder: str = "INBOX", charset: Any = None
+        ) -> list[int]:
+            return list(folder_emails.get(folder, {}).keys())
+
+        def fetch_side_effect(uids: Any, folder: str = "INBOX") -> dict[int, Email]:
+            return {u: folder_emails[folder][u] for u in uids}
+
+        mock_client.search.side_effect = search_side_effect
+        mock_client.fetch_emails.side_effect = fetch_side_effect
+
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = json.loads(
+                await search_emails("test", mock_context, limit=2, offset=2)
+            )
+
+        assert result["total"] == 10
+        # Global date-desc: 10,9,8,7,6,5,4,3,2,1
+        # offset=2, limit=2 → day 8, day 7
+        subjects = [r["subject"] for r in result["results"]]
+        assert subjects == ["Email day 8", "Email day 7"]
