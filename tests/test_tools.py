@@ -367,6 +367,33 @@ class TestTools:
         assert "[]" in result or result == "[]"
 
     @pytest.mark.asyncio
+    async def test_tool_unexpected_exception_catch_all(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that unexpected exceptions hit the catch-all branch."""
+        move_email = tools["move_email"]
+        mark_as_read = tools["mark_as_read"]
+        search_emails = tools["search_emails"]
+        delete_email = tools["delete_email"]
+
+        # RuntimeError is not in (IMAPClientError, OSError, ValueError)
+        mock_client.move_email.side_effect = RuntimeError("unexpected")
+        result = await move_email("INBOX", 123, "Archive", mock_context)
+        assert result == "Error: an unexpected error occurred"
+
+        mock_client.mark_email.side_effect = RuntimeError("unexpected")
+        result = await mark_as_read("INBOX", 123, mock_context)
+        assert result == "Error: an unexpected error occurred"
+
+        mock_client.delete_email.side_effect = RuntimeError("unexpected")
+        result = await delete_email("INBOX", 123, mock_context)
+        assert result == "Error: an unexpected error occurred"
+
+        mock_client.search.side_effect = RuntimeError("unexpected")
+        result = await search_emails("test", mock_context)
+        assert "[]" in result or result == "[]"
+
+    @pytest.mark.asyncio
     async def test_tool_parameter_validation(
         self, tools: Any, mock_client: Any, mock_context: Any
     ) -> None:

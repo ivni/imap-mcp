@@ -244,6 +244,51 @@ class TestResources:
         # The error should be included in the output text
         assert "Error: Test error" in result
 
+    @pytest.mark.asyncio
+    async def test_error_handling_list_emails(
+        self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any
+    ) -> None:
+        """Test error handling in list_emails resource."""
+        register_resources(mock_mcp, mock_imap_client)
+
+        mock_imap_client.search.side_effect = IMAPClientError("IMAP error")
+
+        list_emails = mock_mcp.resources["email://{folder}/list"]
+        result = await list_emails("INBOX")
+        assert "Error: IMAP error" in result
+
+    @pytest.mark.asyncio
+    async def test_error_handling_search_emails(
+        self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any
+    ) -> None:
+        """Test error handling in search_emails resource."""
+        register_resources(mock_mcp, mock_imap_client)
+
+        mock_imap_client.search.side_effect = IMAPClientError("Search error")
+
+        search_emails = mock_mcp.resources["email://search/{query}"]
+        result = await search_emails("test")
+        # Search continues across folders, returns empty results
+        assert "[]" in result
+
+    @pytest.mark.asyncio
+    async def test_unexpected_exception_catch_all(
+        self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any
+    ) -> None:
+        """Test that unexpected exceptions hit the catch-all branch."""
+        register_resources(mock_mcp, mock_imap_client)
+
+        # RuntimeError is not in (IMAPClientError, OSError, ValueError)
+        mock_imap_client.fetch_email.side_effect = RuntimeError("unexpected")
+        get_email = mock_mcp.resources["email://{folder}/{uid}"]
+        result = await get_email("INBOX", "101")
+        assert result == "Error: an unexpected error occurred"
+
+        mock_imap_client.search.side_effect = RuntimeError("unexpected")
+        list_emails = mock_mcp.resources["email://{folder}/list"]
+        result = await list_emails("INBOX")
+        assert result == "Error: an unexpected error occurred"
+
     # --- UID validation tests (issue #12) ---
 
     @pytest.mark.asyncio
