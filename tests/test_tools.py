@@ -1031,9 +1031,7 @@ class TestSearchEmailsPagination:
                 uid=uid,
                 message_id=f"<msg{i}@test.com>",
                 subject=f"Email {i}",
-                from_=EmailAddress(
-                    name=f"Sender {i}", address=f"sender{i}@test.com"
-                ),
+                from_=EmailAddress(name=f"Sender {i}", address=f"sender{i}@test.com"),
                 to=[EmailAddress(name="Recipient", address="recipient@test.com")],
                 date=datetime(2024, 1, 1, tzinfo=timezone.utc) + timedelta(days=i),
                 flags=[],
@@ -1145,9 +1143,7 @@ class TestSearchEmailsPagination:
         """Test that negative offset returns an error."""
         search_emails = tools["search_emails"]
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
-            result = json.loads(
-                await search_emails("test", mock_context, offset=-1)
-            )
+            result = json.loads(await search_emails("test", mock_context, offset=-1))
         assert "error" in result
         assert result["results"] == []
 
@@ -1158,9 +1154,7 @@ class TestSearchEmailsPagination:
         """Test that zero limit returns an error."""
         search_emails = tools["search_emails"]
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
-            result = json.loads(
-                await search_emails("test", mock_context, limit=0)
-            )
+            result = json.loads(await search_emails("test", mock_context, limit=0))
         assert "error" in result
         assert result["results"] == []
 
@@ -1171,8 +1165,6 @@ class TestSearchEmailsPagination:
         """Test that negative limit returns an error."""
         search_emails = tools["search_emails"]
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
-            result = json.loads(
-                await search_emails("test", mock_context, limit=-5)
-            )
+            result = json.loads(await search_emails("test", mock_context, limit=-5))
         assert "error" in result
         assert result["results"] == []

@@ -546,7 +546,7 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                 total_count += len(uids)
 
                 # Limit results and sort by newest first
-                uids = sorted(uids, reverse=True)[:offset + limit]
+                uids = sorted(uids, reverse=True)[: offset + limit]
 
                 if uids:
                     # Fetch emails
@@ -581,14 +581,17 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         results.sort(key=lambda x: str(x.get("date") or "0"), reverse=True)
 
         # Apply pagination
-        results = results[offset:offset + limit]
+        results = results[offset : offset + limit]
 
-        return json.dumps({
-            "total": total_count,
-            "offset": offset,
-            "limit": limit,
-            "results": results,
-        }, indent=2)
+        return json.dumps(
+            {
+                "total": total_count,
+                "offset": offset,
+                "limit": limit,
+                "results": results,
+            },
+            indent=2,
+        )
 
     # Process email interactive session
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False))
