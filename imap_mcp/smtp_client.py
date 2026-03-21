@@ -169,7 +169,7 @@ def create_reply_mime(
             # Add original HTML with a divider
             html_content += (
                 f'\n<div style="border-top: 1px solid #ccc; margin-top: 20px; padding-top: 10px;">'
-                f"\n<p>On {email.utils.format_datetime(original_email.date or datetime.now())}, {original_email.from_} wrote:</p>"
+                f"\n<p>On {email.utils.format_datetime(original_email.date or datetime.now())}, {html.escape(str(original_email.from_))} wrote:</p>"
                 f'\n<blockquote style="margin: 0 0 0 .8ex; border-left: 1px solid #ccc; padding-left: 1ex;">'
                 f"\n{original_email.content.html}"
                 f"\n</blockquote>"
@@ -183,7 +183,7 @@ def create_reply_mime(
                 escaped_text = escaped_text.replace("\n", "<br>")
                 html_content += (
                     f'\n<div style="border-top: 1px solid #ccc; margin-top: 20px; padding-top: 10px;">'
-                    f"\n<p>On {email.utils.format_datetime(original_email.date or datetime.now())}, {original_email.from_} wrote:</p>"
+                    f"\n<p>On {email.utils.format_datetime(original_email.date or datetime.now())}, {html.escape(str(original_email.from_))} wrote:</p>"
                     f'\n<blockquote style="margin: 0 0 0 .8ex; border-left: 1px solid #ccc; padding-left: 1ex;">'
                     f"\n{escaped_text}"
                     f"\n</blockquote>"

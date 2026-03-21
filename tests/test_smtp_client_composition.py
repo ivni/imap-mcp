@@ -216,6 +216,65 @@ class TestCreateReplyMime:
         # Raw dangerous characters must NOT appear unescaped in the quoted block
         assert "<script>" not in html_text
 
+    def test_html_escaping_sender_name(self) -> None:
+        """Test that sender name with HTML is escaped in reply HTML (XSS prevention)."""
+        xss_name = "<img src=x onerror=alert(1)>"
+        email_with_xss_sender = Email(
+            message_id="<xss@example.com>",
+            subject="XSS Test",
+            from_=EmailAddress(name=xss_name, address="attacker@example.com"),
+            to=[EmailAddress(name="Victim", address="victim@example.com")],
+            date=datetime(2024, 1, 1, 12, 0, 0),
+            content=EmailContent(text="Hello", html=None),
+            headers={},
+        )
+        reply_to = EmailAddress(name="Victim", address="victim@example.com")
+
+        mime_message = create_reply_mime(
+            original_email=email_with_xss_sender,
+            reply_to=reply_to,
+            body="My reply.",
+            html_body="<p>My reply.</p>",
+        )
+
+        alternative = mime_message.get_payload(0)
+        html_part = alternative.get_payload(1)  # type: ignore[union-attr]
+        html_text = html_part.get_payload(decode=True).decode()  # type: ignore[union-attr]
+
+        # Sender name must be escaped in HTML
+        assert "&lt;img src=x onerror=alert(1)&gt;" in html_text
+        # Raw XSS payload must NOT appear
+        assert "<img src=x onerror=alert(1)>" not in html_text
+
+    def test_html_escaping_sender_name_with_html_original(self) -> None:
+        """Test sender name escaping when the original email has HTML content."""
+        xss_name = '<script>alert("xss")</script>'
+        email_with_xss_sender = Email(
+            message_id="<xss2@example.com>",
+            subject="XSS Test 2",
+            from_=EmailAddress(name=xss_name, address="attacker@example.com"),
+            to=[EmailAddress(name="Victim", address="victim@example.com")],
+            date=datetime(2024, 1, 1, 12, 0, 0),
+            content=EmailContent(text="Hello", html="<p>Hello</p>"),
+            headers={},
+        )
+        reply_to = EmailAddress(name="Victim", address="victim@example.com")
+
+        mime_message = create_reply_mime(
+            original_email=email_with_xss_sender,
+            reply_to=reply_to,
+            body="My reply.",
+            html_body="<p>My reply.</p>",
+        )
+
+        alternative = mime_message.get_payload(0)
+        html_part = alternative.get_payload(1)  # type: ignore[union-attr]
+        html_text = html_part.get_payload(decode=True).decode()  # type: ignore[union-attr]
+
+        # Sender name must be escaped in HTML
+        assert "&lt;script&gt;" in html_text
+        assert '<script>alert("xss")</script>' not in html_text
+
     def test_reply_subject_with_newlines(self, sample_email: Email) -> None:
         """Test that subjects with CRLF injection characters are handled safely."""
         reply_to = EmailAddress(name="Reply To", address="sender@example.com")
