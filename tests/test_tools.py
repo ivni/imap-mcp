@@ -2,7 +2,7 @@
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -236,13 +236,19 @@ class TestTools:
 
         # Test searching with default parameters
         result = await search_emails("test query", mock_context)
-        result_data = json.loads(result)
+        response = json.loads(result)
 
         # Assert client methods were called properly
         mock_client.list_folders.assert_called_once()
         assert mock_client.search.call_count > 0
 
+        # Check pagination metadata
+        assert "total" in response
+        assert response["offset"] == 0
+        assert response["limit"] == 10
+
         # Check result structure
+        result_data = response["results"]
         assert isinstance(result_data, list)
         assert len(result_data) > 0
         assert "uid" in result_data[0]
@@ -363,8 +369,9 @@ class TestTools:
         # Test search_emails error handling
         mock_client.search.side_effect = IMAPClientError("Search failed")
         result = await search_emails("test", mock_context)
-        # Search should continue with other folders and return an empty list
-        assert "[]" in result or result == "[]"
+        # Search should continue with other folders and return empty results
+        response = json.loads(result)
+        assert response["results"] == []
 
     @pytest.mark.asyncio
     async def test_tool_unexpected_exception_catch_all(
@@ -391,7 +398,8 @@ class TestTools:
 
         mock_client.search.side_effect = RuntimeError("unexpected")
         result = await search_emails("test", mock_context)
-        assert "[]" in result or result == "[]"
+        response = json.loads(result)
+        assert response["results"] == []
 
     @pytest.mark.asyncio
     async def test_tool_parameter_validation(
@@ -784,8 +792,8 @@ class TestSearchEmailsFolderEnforcement:
             result = await search_emails("test", ctx, folder="Trash")
 
         # The search catches exceptions and continues — result should be empty
-        result_data = json.loads(result)
-        assert result_data == []
+        response = json.loads(result)
+        assert response["results"] == []
 
     @pytest.mark.asyncio
     async def test_search_emails_all_folders_when_allowed_empty(
@@ -1008,3 +1016,163 @@ class TestProcessEmailFailurePaths:
 
         assert "Failed" in result
         mock_client.delete_email.assert_called_once_with(123, "INBOX")
+
+
+class TestSearchEmailsPagination:
+    """Tests for search_emails pagination."""
+
+    @pytest.fixture
+    def many_emails(self) -> Any:
+        """Create multiple mock emails with different dates."""
+        emails = {}
+        for i in range(20):
+            uid = 100 + i
+            emails[uid] = Email(
+                uid=uid,
+                message_id=f"<msg{i}@test.com>",
+                subject=f"Email {i}",
+                from_=EmailAddress(
+                    name=f"Sender {i}", address=f"sender{i}@test.com"
+                ),
+                to=[EmailAddress(name="Recipient", address="recipient@test.com")],
+                date=datetime(2024, 1, 1, tzinfo=timezone.utc) + timedelta(days=i),
+                flags=[],
+                attachments=[],
+            )
+        return emails
+
+    @pytest.fixture
+    def mock_client(self) -> Any:
+        """Create a mock IMAP client for pagination tests."""
+        client = MagicMock(spec=ImapClient)
+        client.list_folders.return_value = ["INBOX"]
+        return client
+
+    @pytest.fixture
+    def tools(self, mock_client: Any) -> Any:
+        """Register and return MCP tools backed by mock_client."""
+        mcp = MagicMock(spec=FastMCP)
+        stored_tools: dict[str, Any] = {}
+
+        def mock_tool_decorator(**kwargs: Any) -> Any:
+            def decorator(func: Any) -> Any:
+                stored_tools[func.__name__] = func
+                return func
+
+            return decorator
+
+        mcp.tool = mock_tool_decorator
+        register_tools(mcp, mock_client)
+        return stored_tools
+
+    @pytest.fixture
+    def mock_context(self) -> Any:
+        """Create a mock context with elicitation support."""
+        return _make_confirmed_context()
+
+    @pytest.mark.asyncio
+    async def test_pagination_offset(
+        self, tools: Any, mock_client: Any, mock_context: Any, many_emails: Any
+    ) -> None:
+        """Test that offset skips results correctly."""
+        search_emails = tools["search_emails"]
+        mock_client.search.return_value = list(many_emails.keys())
+        mock_client.fetch_emails.return_value = many_emails
+        mock_client.list_folders.return_value = ["INBOX"]
+
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            # First page
+            result1 = json.loads(
+                await search_emails("test", mock_context, limit=5, offset=0)
+            )
+            assert result1["total"] == 20
+            assert result1["offset"] == 0
+            assert result1["limit"] == 5
+            assert len(result1["results"]) == 5
+
+            # Second page
+            result2 = json.loads(
+                await search_emails("test", mock_context, limit=5, offset=5)
+            )
+            assert result2["total"] == 20
+            assert result2["offset"] == 5
+            assert len(result2["results"]) == 5
+
+        # Results should not overlap
+        uids1 = {r["uid"] for r in result1["results"]}
+        uids2 = {r["uid"] for r in result2["results"]}
+        assert uids1.isdisjoint(uids2)
+
+    @pytest.mark.asyncio
+    async def test_pagination_offset_beyond_total(
+        self, tools: Any, mock_client: Any, mock_context: Any, many_emails: Any
+    ) -> None:
+        """Test that offset beyond total returns empty results."""
+        search_emails = tools["search_emails"]
+        mock_client.search.return_value = list(many_emails.keys())
+        mock_client.fetch_emails.return_value = many_emails
+        mock_client.list_folders.return_value = ["INBOX"]
+
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = json.loads(
+                await search_emails("test", mock_context, limit=10, offset=100)
+            )
+        assert result["total"] == 20
+        assert result["offset"] == 100
+        assert len(result["results"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_pagination_default_offset(
+        self, tools: Any, mock_client: Any, mock_context: Any, many_emails: Any
+    ) -> None:
+        """Test that default offset is 0."""
+        search_emails = tools["search_emails"]
+        mock_client.search.return_value = [101, 102, 103]
+        mock_client.fetch_emails.return_value = {
+            k: v for k, v in many_emails.items() if k in [101, 102, 103]
+        }
+        mock_client.list_folders.return_value = ["INBOX"]
+
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = json.loads(await search_emails("test", mock_context))
+        assert result["offset"] == 0
+        assert result["total"] == 3
+
+    @pytest.mark.asyncio
+    async def test_negative_offset_rejected(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that negative offset returns an error."""
+        search_emails = tools["search_emails"]
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = json.loads(
+                await search_emails("test", mock_context, offset=-1)
+            )
+        assert "error" in result
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_zero_limit_rejected(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that zero limit returns an error."""
+        search_emails = tools["search_emails"]
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = json.loads(
+                await search_emails("test", mock_context, limit=0)
+            )
+        assert "error" in result
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_negative_limit_rejected(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that negative limit returns an error."""
+        search_emails = tools["search_emails"]
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = json.loads(
+                await search_emails("test", mock_context, limit=-5)
+            )
+        assert "error" in result
+        assert result["results"] == []
