@@ -307,10 +307,21 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         )
 
         # Save as draft
-        draft_uid = client.save_draft_mime(mime_message)
+        try:
+            draft_uid = client.save_draft_mime(mime_message)
+        except (IMAPClientError, OSError) as e:
+            return {
+                "status": "error",
+                "message": f"Failed to save draft: {e}",
+                "reply_body": reply_body,
+            }
         if draft_uid:
             return {"status": "success", "draft_uid": draft_uid}
-        return {"status": "error", "message": "Failed to save draft"}
+        return {
+            "status": "error",
+            "message": "Failed to save draft (no UID returned)",
+            "reply_body": reply_body,
+        }
 
     @mcp.tool(
         title="Move Email",
@@ -937,7 +948,12 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
 
             # Step 6: Save as draft
             logger.info("Saving reply as draft")
-            draft_uid = client.save_draft_mime(mime_message)
+            try:
+                draft_uid = client.save_draft_mime(mime_message)
+            except (IMAPClientError, OSError) as e:
+                result["message"] = f"Failed to save draft: {e}"
+                result["reply_body"] = reply_content["reply_body"]
+                return result
 
             if draft_uid:
                 drafts_folder = client._get_drafts_folder()
@@ -951,7 +967,8 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                     f"Draft saved successfully with UID {draft_uid} in folder {drafts_folder}"
                 )
             else:
-                result["message"] = "Failed to save draft"
+                result["message"] = "Failed to save draft (no UID returned)"
+                result["reply_body"] = reply_content["reply_body"]
 
         except (IMAPClientError, OSError, ValueError) as e:
             logger.error(f"Error processing meeting invite: {e}")

@@ -594,26 +594,28 @@ class ImapClient:
         Raises:
             ValueError: If uid is not a positive integer
             ConnectionError: If not connected and connection fails
+            IMAPClientError: If the IMAP operation fails
+            OSError: If a network/socket error occurs
         """
         self._validate_uid(uid)
         self.ensure_connected()
         self.select_folder(folder)
         assert self.client is not None
 
-        try:
-            if value:
-                self.client.add_flags([uid], flag)
-                logger.debug(f"Added flag {flag} to message {uid}")
-            else:
-                self.client.remove_flags([uid], flag)
-                logger.debug(f"Removed flag {flag} from message {uid}")
-            return True
-        except (IMAPClientError, OSError) as e:
-            logger.error(f"Failed to mark email: {e}")
-            return False
+        if value:
+            self.client.add_flags([uid], flag)
+            logger.debug(f"Added flag {flag} to message {uid}")
+        else:
+            self.client.remove_flags([uid], flag)
+            logger.debug(f"Removed flag {flag} from message {uid}")
+        return True
 
     def move_email(self, uid: int, source_folder: str, target_folder: str) -> bool:
         """Move email to another folder.
+
+        Performs a copy-then-delete sequence. If copy succeeds but delete
+        fails, raises with a message indicating the email may exist in
+        both folders.
 
         Args:
             uid: Email UID
@@ -626,6 +628,8 @@ class ImapClient:
         Raises:
             ValueError: If uid is not a positive integer, or folder is not allowed or contains invalid characters
             ConnectionError: If not connected and connection fails
+            IMAPClientError: If the IMAP operation fails (includes partial-state info if copy succeeded but delete failed)
+            OSError: If a network/socket error occurs
         """
         self._validate_uid(uid)
         self._validate_folder_name(source_folder)
@@ -644,16 +648,21 @@ class ImapClient:
         self.select_folder(source_folder)
         assert self.client is not None
 
+        # Step 1: Copy to target (if this fails, no state change)
+        self.client.copy([uid], target_folder)
+
+        # Step 2: Delete from source (if this fails, email is duplicated)
         try:
-            # Move email (copy + delete)
-            self.client.copy([uid], target_folder)
             self.client.add_flags([uid], r"\Deleted")
             self.client.expunge()
-            logger.debug(f"Moved message {uid} from {source_folder} to {target_folder}")
-            return True
         except (IMAPClientError, OSError) as e:
-            logger.error(f"Failed to move email: {e}")
-            return False
+            raise IMAPClientError(
+                f"Move partially completed: email was copied to '{target_folder}' "
+                f"but could not be deleted from '{source_folder}': {e}"
+            ) from e
+
+        logger.debug(f"Moved message {uid} from {source_folder} to {target_folder}")
+        return True
 
     def delete_email(self, uid: int, folder: str) -> bool:
         """Delete email.
@@ -668,20 +677,18 @@ class ImapClient:
         Raises:
             ValueError: If uid is not a positive integer
             ConnectionError: If not connected and connection fails
+            IMAPClientError: If the IMAP operation fails
+            OSError: If a network/socket error occurs
         """
         self._validate_uid(uid)
         self.ensure_connected()
         self.select_folder(folder)
         assert self.client is not None
 
-        try:
-            self.client.add_flags([uid], r"\Deleted")
-            self.client.expunge()
-            logger.debug(f"Deleted message {uid} from {folder}")
-            return True
-        except (IMAPClientError, OSError) as e:
-            logger.error(f"Failed to delete email: {e}")
-            return False
+        self.client.add_flags([uid], r"\Deleted")
+        self.client.expunge()
+        logger.debug(f"Deleted message {uid} from {folder}")
+        return True
 
     def _get_drafts_folder(self) -> str:
         """Get the drafts folder name for the current server.
@@ -724,45 +731,38 @@ class ImapClient:
 
         Raises:
             ConnectionError: If not connected and connection fails
+            IMAPClientError: If the IMAP append operation fails
+            OSError: If a network/socket error occurs
         """
         self.ensure_connected()
 
         # Get the drafts folder
         drafts_folder = self._get_drafts_folder()
 
-        try:
-            # Convert message to bytes if it's not already
-            if hasattr(message, "as_bytes"):
-                message_bytes = message.as_bytes()
-            else:
-                message_bytes = message.as_string().encode("utf-8")
+        # Convert message to bytes if it's not already
+        if hasattr(message, "as_bytes"):
+            message_bytes = message.as_bytes()
+        else:
+            message_bytes = message.as_string().encode("utf-8")
 
-            # Save the draft with Draft flag
-            assert self.client is not None
-            response = self.client.append(
-                drafts_folder, message_bytes, flags=(r"\Draft",)
-            )
+        # Save the draft with Draft flag
+        assert self.client is not None
+        response = self.client.append(drafts_folder, message_bytes, flags=(r"\Draft",))
 
-            # Try to extract the UID from the response
-            uid = None
-            if isinstance(response, bytes) and b"APPENDUID" in response:
-                # Parse the APPENDUID response (format: [APPENDUID <uidvalidity> <uid>])
-                try:
-                    # Use a more robust parsing approach
-                    match = re.search(rb"APPENDUID\s+\d+\s+(\d+)", response)
-                    if match:
-                        uid = int(match.group(1))
-                        logger.debug(f"Draft saved with UID: {uid}")
-                except (IndexError, ValueError) as e:
-                    logger.warning(f"Could not parse UID from response: {e}")
+        # Try to extract the UID from the response
+        uid = None
+        if isinstance(response, bytes) and b"APPENDUID" in response:
+            # Parse the APPENDUID response (format: [APPENDUID <uidvalidity> <uid>])
+            try:
+                # Use a more robust parsing approach
+                match = re.search(rb"APPENDUID\s+\d+\s+(\d+)", response)
+                if match:
+                    uid = int(match.group(1))
+                    logger.debug(f"Draft saved with UID: {uid}")
+            except (IndexError, ValueError) as e:
+                logger.warning(f"Could not parse UID from response: {e}")
 
-            if uid is None:
-                logger.warning(
-                    f"Could not extract UID from append response: {response}"
-                )
+        if uid is None:
+            logger.warning(f"Could not extract UID from append response: {response}")
 
-            return uid
-
-        except (IMAPClientError, OSError) as e:
-            logger.error(f"Failed to save draft: {e}")
-            return None
+        return uid

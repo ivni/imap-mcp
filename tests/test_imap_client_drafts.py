@@ -133,19 +133,17 @@ class TestDraftsFunctionality:
             "Could not extract UID from append response: b'OK'"
         )
 
-    @patch("imap_mcp.imap_client.logger")
     def test_save_draft_mime_error(
-        self, mock_logger: Any, mock_imap_client: Any, sample_mime_message: Any
+        self, mock_imap_client: Any, sample_mime_message: Any
     ) -> None:
-        """Test error handling when saving a draft fails."""
+        """Test that save_draft_mime raises when saving fails."""
         # Mock behavior
         mock_imap_client._get_drafts_folder = MagicMock(return_value="Drafts")
         mock_imap_client.client.append.side_effect = IMAPClientError("IMAP error")
 
-        # Call save_draft_mime
-        uid = mock_imap_client.save_draft_mime(sample_mime_message)
+        # Call save_draft_mime - should raise
+        with pytest.raises(IMAPClientError, match="IMAP error"):
+            mock_imap_client.save_draft_mime(sample_mime_message)
 
         # Verify behavior
         mock_imap_client.client.append.assert_called_once()
-        assert uid is None
-        mock_logger.error.assert_called()

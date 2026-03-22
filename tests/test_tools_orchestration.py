@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 from mcp.server.fastmcp import Context, FastMCP
 
 from imap_mcp.config import ImapConfig
@@ -340,7 +341,7 @@ class TestMeetingInviteOrchestration:
         mock_mime_message = MagicMock(spec=EmailMessage)
         mock_create_reply_mime.return_value = mock_mime_message
 
-        mock_imap_client.save_draft_mime.return_value = None
+        mock_imap_client.save_draft_mime.side_effect = IMAPClientError("Quota exceeded")
 
         process_meeting_invite = registered_tools["process_meeting_invite"]
         result = await process_meeting_invite(
@@ -350,6 +351,7 @@ class TestMeetingInviteOrchestration:
         assert result["status"] == "error"
         assert "Failed to save draft" in result["message"]
         assert result["availability"] is False
+        assert result["reply_body"] == "I'm unable to attend the meeting..."
 
         mock_imap_client.fetch_email.assert_called_once_with(456, "INBOX")
         mock_identify_invite.assert_called_once_with(mock_invite_email)

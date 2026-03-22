@@ -5,6 +5,7 @@ from typing import Any, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 from mcp.server.fastmcp import Context, FastMCP
 
 from imap_mcp.models import Email, EmailAddress, EmailContent
@@ -185,7 +186,7 @@ class TestToolsReply:
 
         mime_message = MagicMock()
         mock_create_reply.return_value = mime_message
-        imap_client.save_draft_mime.return_value = None
+        imap_client.save_draft_mime.side_effect = IMAPClientError("Quota exceeded")
 
         result = await draft_reply_tool(
             folder="INBOX",
@@ -196,6 +197,7 @@ class TestToolsReply:
 
         assert result["status"] == "error"
         assert "failed to save" in result["message"].lower()
+        assert result["reply_body"] == "Reply that can't be saved"
         imap_client.save_draft_mime.assert_called_once()
 
     @pytest.mark.asyncio

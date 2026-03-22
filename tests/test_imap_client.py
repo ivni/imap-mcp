@@ -919,7 +919,7 @@ class TestImapClient:
             assert result is True
 
     def test_mark_email_failure(self, mock_imap_client: MagicMock) -> None:
-        """Test marking an email with a flag when operation fails."""
+        """Test marking an email raises when operation fails."""
         config = ImapConfig(
             host="imap.example.com",
             port=993,
@@ -941,8 +941,9 @@ class TestImapClient:
             # Connect first
             client.connect()
 
-            # Mark email should fail but not raise exception
-            result = client.mark_email(12345, folder="INBOX", flag=r"\Seen", value=True)
+            # Mark email should raise exception
+            with pytest.raises(IMAPClientError, match="Failed to add flag"):
+                client.mark_email(12345, folder="INBOX", flag=r"\Seen", value=True)
 
             # Verify select_folder was called with readonly=False
             mock_imap_client.select_folder.assert_called_once_with(
@@ -951,9 +952,6 @@ class TestImapClient:
 
             # Verify add_flags was called with correct parameters
             mock_imap_client.add_flags.assert_called_once_with([12345], r"\Seen")
-
-            # Verify result is failure
-            assert result is False
 
     def test_move_email(self, mock_imap_client: MagicMock) -> None:
         """Test moving an email to another folder."""
@@ -1270,7 +1268,7 @@ class TestImapClient:
                 client.select_folder('Trash"\r\n')
 
     def test_move_email_failure(self, mock_imap_client: MagicMock) -> None:
-        """Test moving an email when operation fails."""
+        """Test moving an email raises when copy fails."""
         config = ImapConfig(
             host="imap.example.com",
             port=993,
@@ -1290,10 +1288,9 @@ class TestImapClient:
             # Connect first
             client.connect()
 
-            # Move email should fail but not raise exception
-            result = client.move_email(
-                12345, source_folder="INBOX", target_folder="Archive"
-            )
+            # Move email should raise exception
+            with pytest.raises(IMAPClientError, match="Failed to copy email"):
+                client.move_email(12345, source_folder="INBOX", target_folder="Archive")
 
             # Verify select_folder was called with readonly=False
             mock_imap_client.select_folder.assert_called_once_with(
@@ -1303,8 +1300,34 @@ class TestImapClient:
             # Verify copy was called with correct parameters
             mock_imap_client.copy.assert_called_once_with([12345], "Archive")
 
-            # Verify result is failure
-            assert result is False
+    def test_move_email_partial_failure(self, mock_imap_client: MagicMock) -> None:
+        """Test that move_email detects partial state when delete fails after copy."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+
+            # Set up: copy succeeds, add_flags fails
+            mock_imap_client.select_folder.return_value = {b"EXISTS": 10}
+            mock_imap_client.copy.return_value = None
+            mock_imap_client.add_flags.side_effect = IMAPClientError(
+                "Permission denied"
+            )
+
+            client.connect()
+
+            with pytest.raises(IMAPClientError, match="partially completed"):
+                client.move_email(12345, source_folder="INBOX", target_folder="Archive")
+
+            # Verify copy was called (email exists in target)
+            mock_imap_client.copy.assert_called_once_with([12345], "Archive")
 
     def test_delete_email(self, mock_imap_client: MagicMock) -> None:
         """Test deleting an email."""
@@ -1344,7 +1367,7 @@ class TestImapClient:
             assert result is True
 
     def test_delete_email_failure(self, mock_imap_client: Any) -> None:
-        """Test deleting an email when operation fails."""
+        """Test deleting an email raises when operation fails."""
         config = ImapConfig(
             host="imap.example.com",
             port=993,
@@ -1366,8 +1389,9 @@ class TestImapClient:
             # Connect first
             client.connect()
 
-            # Delete email should fail but not raise exception
-            result = client.delete_email(12345, folder="INBOX")
+            # Delete email should raise exception
+            with pytest.raises(IMAPClientError, match="Failed to add flag"):
+                client.delete_email(12345, folder="INBOX")
 
             # Verify select_folder was called with readonly=False
             mock_imap_client.select_folder.assert_called_once_with(
@@ -1376,9 +1400,6 @@ class TestImapClient:
 
             # Verify add_flags was called
             mock_imap_client.add_flags.assert_called_once_with([12345], r"\Deleted")
-
-            # Verify result is failure
-            assert result is False
 
     # --- UID validation tests (issue #12) ---
 
