@@ -342,6 +342,14 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         Returns:
             Success message or error message
         """
+        client = get_client_from_context(ctx)
+        error = _validate_tool_folder(client, folder)
+        if error:
+            return error
+        error = _validate_tool_folder(client, target_folder)
+        if error:
+            return error
+
         confirmation = await require_confirmation(
             ctx, "move", folder, uid, target_folder=target_folder
         )
@@ -349,8 +357,6 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             if confirmation == ConfirmationResult.ERROR:
                 return "Action aborted: confirmation system error for move"
             return "Action cancelled: move not confirmed by user"
-
-        client = get_client_from_context(ctx)
 
         try:
             success = client.move_email(uid, folder, target_folder)
@@ -705,6 +711,15 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         Returns:
             Success message or error message
         """
+        client = get_client_from_context(ctx)
+        error = _validate_tool_folder(client, folder)
+        if error:
+            return error
+        if target_folder:
+            error = _validate_tool_folder(client, target_folder)
+            if error:
+                return error
+
         # Require confirmation for destructive actions
         destructive_actions = {"delete", "move"}
         if action.lower() in destructive_actions:
@@ -719,15 +734,6 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                 if confirmation == ConfirmationResult.ERROR:
                     return f"Action aborted: confirmation system error for {action}"
                 return f"Action cancelled: {action} not confirmed by user"
-
-        client = get_client_from_context(ctx)
-        error = _validate_tool_folder(client, folder)
-        if error:
-            return error
-        if target_folder:
-            error = _validate_tool_folder(client, target_folder)
-            if error:
-                return error
 
         # Fetch the email first to have context for learning
         email_obj = client.fetch_email(uid, folder)

@@ -869,6 +869,58 @@ class TestToolFolderValidation:
         mock_client.mark_email.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_move_email_rejects_invalid_source_folder(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that move_email rejects invalid source folder name."""
+        mock_client._validate_folder_name.side_effect = ValueError(
+            "contains invalid characters"
+        )
+        move_email = tools["move_email"]
+
+        result = await move_email("INBOX\r\nDELETE", 123, "Archive", mock_context)
+
+        assert "Invalid folder name" in result
+        mock_client.move_email.assert_not_called()
+        mock_context.elicit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_move_email_rejects_invalid_target_folder(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that move_email rejects invalid target folder name."""
+
+        def validate_side_effect(folder: str) -> None:
+            if folder == "INBOX":
+                return None
+            raise ValueError("contains invalid characters")
+
+        mock_client._validate_folder_name.side_effect = validate_side_effect
+        mock_client._is_folder_allowed.return_value = True
+        move_email = tools["move_email"]
+
+        result = await move_email("INBOX", 123, "BAD\r\nFOLDER", mock_context)
+
+        assert "Invalid folder name" in result
+        mock_client.move_email.assert_not_called()
+        mock_context.elicit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_move_email_rejects_disallowed_folder(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Test that move_email rejects folders not in allowed list."""
+        mock_client._validate_folder_name.return_value = None
+        mock_client._is_folder_allowed.return_value = False
+        move_email = tools["move_email"]
+
+        result = await move_email("SecretFolder", 123, "Archive", mock_context)
+
+        assert "not in the allowed folders list" in result
+        mock_client.move_email.assert_not_called()
+        mock_context.elicit.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_delete_email_rejects_invalid_folder(
         self, tools: Any, mock_client: Any, mock_context: Any
     ) -> None:
@@ -920,6 +972,7 @@ class TestToolFolderValidation:
 
         assert "Invalid folder name" in result
         mock_client.move_email.assert_not_called()
+        mock_context.elicit.assert_not_called()
 
 
 class TestProcessEmailFailurePaths:
