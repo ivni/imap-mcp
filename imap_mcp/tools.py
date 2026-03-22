@@ -257,7 +257,7 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             body_html: Optional HTML version of the reply
 
         Returns:
-            Dictionary with status and the UID of the created draft
+            Dictionary with status and the UID of the created draft (None if server lacks UIDPLUS)
         """
         confirmation = await require_confirmation(ctx, "save draft reply", folder, uid)
         if confirmation != ConfirmationResult.CONFIRMED:
@@ -318,8 +318,9 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         if draft_uid:
             return {"status": "success", "draft_uid": draft_uid}
         return {
-            "status": "error",
-            "message": "Failed to save draft (no UID returned)",
+            "status": "success",
+            "draft_uid": None,
+            "message": "Draft saved (UID not available)",
             "reply_body": reply_body,
         }
 
@@ -844,7 +845,7 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
             Dictionary with the processing result:
               - status: "success", "not_invite", "cancelled", or "error"
               - message: Description of the result
-              - draft_uid: UID of the saved draft (if successful)
+              - draft_uid: UID of the saved draft (None if server lacks UIDPLUS)
               - draft_folder: Folder where the draft was saved (if successful)
               - availability: Whether the time slot was available
         """
@@ -967,7 +968,10 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
                     f"Draft saved successfully with UID {draft_uid} in folder {drafts_folder}"
                 )
             else:
-                result["message"] = "Failed to save draft (no UID returned)"
+                drafts_folder = client._get_drafts_folder()
+                result["status"] = "success"
+                result["message"] = "Draft saved (UID not available)"
+                result["draft_folder"] = drafts_folder
                 result["reply_body"] = reply_content["reply_body"]
 
         except (IMAPClientError, OSError, ValueError) as e:
