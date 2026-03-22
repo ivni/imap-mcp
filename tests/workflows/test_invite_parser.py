@@ -1,6 +1,6 @@
 """Tests for meeting invite identification and parsing logic."""
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -165,11 +165,37 @@ class TestInviteParser:
         assert start_time is not None
         assert end_time is not None
 
-        # Check expected time values
+        # Date must come from When line (March 31), not email send date (March 30)
+        assert start_time.year == 2025
+        assert start_time.month == 3
+        assert start_time.day == 31
         assert start_time.hour == 14  # 2 PM
         assert start_time.minute == 0
+        assert end_time.day == 31
         assert end_time.hour == 15  # 3 PM
         assert end_time.minute == 0
+
+    def test_extract_meeting_times_date_from_when_text(self) -> None:
+        """Test that meeting date is parsed from When line, not email send date."""
+        email_obj = Email(
+            message_id="<test-date@example.com>",
+            subject="Meeting Invitation: Sprint Planning",
+            from_=EmailAddress(name="PM", address="pm@example.com"),
+            to=[EmailAddress(name="Dev", address="dev@example.com")],
+            date=datetime(2025, 6, 10, 9, 0, 0),  # Email sent June 10
+            content=EmailContent(
+                text="When: Thursday, June 12, 2025 3:00 PM - 4:00 PM\n"
+            ),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+
+        assert start_time is not None
+        assert end_time is not None
+        # Meeting is June 12, NOT June 10 (the email send date)
+        assert start_time.date() == datetime(2025, 6, 12).date()
+        assert start_time.hour == 15
+        assert end_time.date() == datetime(2025, 6, 12).date()
+        assert end_time.hour == 16
 
     def test_extract_meeting_location(
         self, basic_invite_email: Any, online_meeting_invite_email: Any
@@ -298,6 +324,194 @@ class TestExtractMeetingTimesAMPM:
         assert start_time.hour == 9
         assert end_time.hour == 10
 
+    def test_24h_afternoon(self) -> None:
+        """Test that 24-hour afternoon times are parsed correctly."""
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 31, 10, 0, 0),
+            content=EmailContent(text="When: Monday, March 31, 2025 14:00 - 15:00"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert end_time is not None
+        assert start_time.hour == 14
+        assert start_time.minute == 0
+        assert end_time.hour == 15
+        assert end_time.minute == 0
+
+    def test_24h_morning(self) -> None:
+        """Test that 24-hour morning times with minutes are parsed correctly."""
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 31, 10, 0, 0),
+            content=EmailContent(text="When: Monday, March 31, 2025 9:30 - 10:30"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert end_time is not None
+        assert start_time.hour == 9
+        assert start_time.minute == 30
+        assert end_time.hour == 10
+        assert end_time.minute == 30
+
+    def test_mixed_24h_and_ampm(self) -> None:
+        """Test mixed format: 24-hour start, AM/PM end."""
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 31, 10, 0, 0),
+            content=EmailContent(text="When: Monday, March 31, 2025 14:00 - 3:00 PM"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert end_time is not None
+        assert start_time.hour == 14
+        assert end_time.hour == 15
+
+    def test_bare_time_treated_as_24h(self) -> None:
+        """Test that bare times without AM/PM are treated as 24-hour format.
+
+        "2:00 - 3:00" without AM/PM is interpreted as 02:00-03:00 (early morning).
+        This is strictly better than the old behavior where the regex didn't match
+        at all and fell back to the email send date (losing the correct date).
+        """
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 30, 14, 0, 0),  # Email sent March 30
+            content=EmailContent(text="When: Monday, March 31, 2025 2:00 - 3:00"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert end_time is not None
+        # Date comes from When line (March 31), not email send date (March 30)
+        assert start_time.date() == datetime(2025, 3, 31).date()
+        # Bare "2:00" without AM/PM → 24-hour interpretation → 2 AM
+        assert start_time.hour == 2
+        assert end_time.hour == 3
+
+    def test_when_line_no_date_falls_back_to_email_date(self) -> None:
+        """Test that When lines without a date fall back to email send date."""
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 31, 14, 0, 0),
+            content=EmailContent(text="When: Monday 2:00 PM - 3:00 PM"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert end_time is not None
+        # No date in When line, so should use email date (March 31)
+        assert start_time.date() == datetime(2025, 3, 31).date()
+        assert end_time.date() == datetime(2025, 3, 31).date()
+        assert start_time.hour == 14
+        assert end_time.hour == 15
+
+    def test_abbreviated_month(self) -> None:
+        """Test that abbreviated month names are parsed correctly."""
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 28, 10, 0, 0),
+            content=EmailContent(text="When: Thu, Mar 31, 2025 2:00 PM - 3:00 PM"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert end_time is not None
+        assert start_time.date() == datetime(2025, 3, 31).date()
+        assert start_time.hour == 14
+        assert end_time.hour == 15
+
+    def test_iso_date_format(self) -> None:
+        """Test that ISO 8601 dates (YYYY-MM-DD) are parsed from When line."""
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 6, 10, 9, 0, 0),
+            content=EmailContent(text="When: 2025-06-15 3:00 PM - 4:00 PM"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert end_time is not None
+        assert start_time.date() == datetime(2025, 6, 15).date()
+        assert start_time.hour == 15
+        assert end_time.hour == 16
+
+    def test_timezone_preserved(self) -> None:
+        """Test that timezone from email date is preserved in parsed meeting time."""
+        tz = timezone(timedelta(hours=3))
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 30, 14, 0, 0, tzinfo=tz),
+            content=EmailContent(text="When: Monday, March 31, 2025 2:00 PM - 3:00 PM"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert end_time is not None
+        assert start_time.date() == datetime(2025, 3, 31).date()
+        assert start_time.tzinfo == tz
+        assert end_time.tzinfo == tz
+
+    def test_seconds_zeroed(self) -> None:
+        """Test that seconds/microseconds are zeroed in parsed meeting times."""
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 31, 14, 30, 45, 123456),
+            content=EmailContent(text="When: Monday 2:00 PM - 3:00 PM"),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert end_time is not None
+        assert start_time.second == 0
+        assert start_time.microsecond == 0
+        assert end_time.second == 0
+        assert end_time.microsecond == 0
+
+    def test_fallback_hour_23_no_overflow(self) -> None:
+        """Test that fallback end time at hour 23 doesn't crash (fixes #44)."""
+        email_obj = Email(
+            message_id="<test@example.com>",
+            subject="Meeting",
+            from_=EmailAddress(name="", address="test@example.com"),
+            to=[],
+            date=datetime(2025, 3, 31, 23, 30, 0),
+            content=EmailContent(text="Let's discuss the project."),
+        )
+        start_time, end_time = _extract_meeting_times(email_obj)
+        assert start_time is not None
+        assert end_time is not None
+        assert start_time.date() == datetime(2025, 3, 31).date()
+        assert start_time.hour == 23
+        assert start_time.minute == 30
+        assert start_time.second == 0
+        assert end_time == start_time + timedelta(hours=1)
+        # End time rolls over to next day
+        assert end_time.day == 1
+        assert end_time.hour == 0
+        assert end_time.minute == 30
+
     def test_invalid_time_falls_back_to_email_date(self) -> None:
         """Test that invalid times trigger fallback to email date."""
         email_obj = Email(
@@ -310,4 +524,6 @@ class TestExtractMeetingTimesAMPM:
         )
         start_time, end_time = _extract_meeting_times(email_obj)
         assert start_time is not None
-        assert start_time == email_obj.date
+        assert start_time.date() == datetime(2025, 3, 31).date()
+        assert start_time.hour == 14
+        assert start_time.second == 0

@@ -2,7 +2,7 @@
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
 
 from imap_mcp.models import Email
@@ -170,6 +170,66 @@ def _extract_meeting_subject(email_obj: Email) -> str:
     return subject.strip()
 
 
+_MONTH_MAP: dict[str, int] = {}
+for _i, _name in enumerate(
+    [
+        "january",
+        "february",
+        "march",
+        "april",
+        "may",
+        "june",
+        "july",
+        "august",
+        "september",
+        "october",
+        "november",
+        "december",
+    ],
+    1,
+):
+    _MONTH_MAP[_name] = _i
+    _MONTH_MAP[_name[:3]] = _i
+
+
+def _parse_date_from_when_text(when_text: str) -> Optional[datetime]:
+    """Parse a date from a 'When:' line text. Locale-independent.
+
+    Supports:
+        - "Month DD, YYYY" (e.g. "March 31, 2025", "Mar 31, 2025")
+        - "YYYY-MM-DD" ISO 8601 (e.g. "2025-03-31")
+
+    Args:
+        when_text: The text after "When:" from the email content
+
+    Returns:
+        A datetime with the parsed date, or None if no date could be parsed.
+    """
+    # "March 31, 2025" or "Mar 31, 2025"
+    date_match = re.search(r"([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})", when_text)
+    if date_match:
+        month = _MONTH_MAP.get(date_match.group(1).lower())
+        if month:
+            try:
+                return datetime(
+                    int(date_match.group(3)), month, int(date_match.group(2))
+                )
+            except ValueError:
+                pass
+    # "2025-03-31" (ISO 8601)
+    iso_match = re.search(r"(\d{4})-(\d{2})-(\d{2})", when_text)
+    if iso_match:
+        try:
+            return datetime(
+                int(iso_match.group(1)),
+                int(iso_match.group(2)),
+                int(iso_match.group(3)),
+            )
+        except ValueError:
+            pass
+    return None
+
+
 def _extract_meeting_times(
     email_obj: Email,
 ) -> Tuple[Optional[datetime], Optional[datetime]]:
@@ -202,19 +262,28 @@ def _extract_meeting_times(
 
     if when_match:
         when_text = when_match.group(1).strip()
+        # Try to extract date from "When:" text; fall back to email send date
+        parsed_date = _parse_date_from_when_text(when_text)
+        meeting_date = parsed_date if parsed_date else default_date
+        # Preserve timezone from email date when we parsed a naive date
+        if (
+            meeting_date
+            and default_date
+            and default_date.tzinfo
+            and not meeting_date.tzinfo
+        ):
+            meeting_date = meeting_date.replace(tzinfo=default_date.tzinfo)
         # Extract times from the "when" line
         time_range_pattern = (
-            r"(\d{1,2}[:]\d{2}\s*(?:AM|PM))\s*-\s*(\d{1,2}[:]\d{2}\s*(?:AM|PM))"
+            r"(\d{1,2}[:]\d{2}\s*(?:AM|PM)?)\s*-\s*(\d{1,2}[:]\d{2}\s*(?:AM|PM)?)"
         )
         time_match = re.search(time_range_pattern, when_text, re.IGNORECASE)
 
-        if time_match and default_date:
-            # We have times but need to combine with the email date
+        if time_match and meeting_date:
+            # We have times — combine with parsed meeting date (or email date as fallback)
             start_time_str, end_time_str = time_match.groups()
 
-            # This is a simple approach - a more robust solution would parse the full date from the when_text
             try:
-                # Parse time strings and combine with email date
                 start_match = re.search(r"(\d{1,2})[:](\d{2})", start_time_str)
                 if not start_match:
                     raise ValueError("Could not parse start time")
@@ -247,16 +316,20 @@ def _extract_meeting_times(
                     raise ValueError(f"Invalid end time: {end_hour}:{end_minute}")
 
                 # Create datetime objects
-                start_time = default_date.replace(hour=start_hour, minute=start_minute)
-                end_time = default_date.replace(hour=end_hour, minute=end_minute)
+                start_time = meeting_date.replace(
+                    hour=start_hour, minute=start_minute, second=0, microsecond=0
+                )
+                end_time = meeting_date.replace(
+                    hour=end_hour, minute=end_minute, second=0, microsecond=0
+                )
             except (ValueError, AttributeError):
                 logger.warning(f"Could not parse meeting times from: {when_text}")
 
     # If we still don't have times, use email date as fallback for start time
     # and add 1 hour for end time
     if not start_time and default_date:
-        start_time = default_date
-        end_time = start_time.replace(hour=start_time.hour + 1)
+        start_time = default_date.replace(second=0, microsecond=0)
+        end_time = start_time + timedelta(hours=1)
 
     return start_time, end_time
 
