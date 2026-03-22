@@ -203,6 +203,41 @@ class TestToolsReply:
     @pytest.mark.asyncio
     @patch("imap_mcp.smtp_client.create_reply_mime")
     @patch("imap_mcp.tools.get_client_from_context")
+    async def test_draft_reply_tool_success_without_uid(
+        self,
+        mock_get_client: MagicMock,
+        mock_create_reply: MagicMock,
+        registered_tools: tuple[dict[str, Any], MagicMock],
+        mock_email: Email,
+        mock_context: MagicMock,
+    ) -> None:
+        """Test that draft save without UIDPLUS reports success, not error."""
+        tools_dict, imap_client = registered_tools
+        draft_reply_tool = tools_dict["draft_reply_tool"]
+
+        mock_get_client.return_value = imap_client
+        imap_client.fetch_email.return_value = mock_email
+        imap_client.config.username = "recipient@example.com"
+
+        mime_message = MagicMock()
+        mock_create_reply.return_value = mime_message
+        imap_client.save_draft_mime.return_value = None
+
+        result = await draft_reply_tool(
+            folder="INBOX",
+            uid=1,
+            reply_body="Reply on non-UIDPLUS server",
+            ctx=mock_context,
+        )
+
+        assert result["status"] == "success"
+        assert result["draft_uid"] is None
+        assert "reply_body" in result
+        imap_client.save_draft_mime.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("imap_mcp.smtp_client.create_reply_mime")
+    @patch("imap_mcp.tools.get_client_from_context")
     async def test_draft_reply_uses_config_username_not_to_header(
         self,
         mock_get_client: MagicMock,
