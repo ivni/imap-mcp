@@ -736,6 +736,11 @@ class TestLoadConfig:
         assert config.imap.username == "test@example.com"
         assert config.imap.password == "env_password"
 
+    def test_load_config_raises_on_missing_explicit_path(self) -> None:
+        """Explicitly specified config file must exist."""
+        with pytest.raises(FileNotFoundError, match="Configuration file not found"):
+            load_config("/nonexistent/path/config.yaml")
+
     def test_load_from_env_variables(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test loading configuration from environment variables."""
         # Set environment variables
@@ -746,51 +751,37 @@ class TestLoadConfig:
         monkeypatch.setenv("IMAP_USE_SSL", "true")
         monkeypatch.setenv("IMAP_ALLOWED_FOLDERS", "INBOX,Sent,Archive")
 
-        # Mock open to raise FileNotFoundError
-        original_open = open
+        # Ensure no default config files are found
+        monkeypatch.setattr(Path, "exists", lambda self: False)
 
-        def mock_open(*args: Any, **kwargs: Any) -> Any:
-            if args[0] == "nonexistent_file.yaml":
-                raise FileNotFoundError(f"No such file: {args[0]}")
-            return original_open(*args, **kwargs)
+        # Load config (will use env variables since no config file found)
+        config = load_config()
 
-        # Need to patch the built-in open function
-        with patch("builtins.open", side_effect=mock_open):
-            # Load config (will use env variables since file doesn't exist)
-            config = load_config("nonexistent_file.yaml")
+        # Verify config data
+        assert config.imap.host == "imap.example.com"
+        assert config.imap.port == 993
+        assert config.imap.username == "test@example.com"
+        assert config.imap.password == "env_password"
+        assert config.imap.use_ssl is True
+        assert config.allowed_folders == ["INBOX", "Sent", "Archive"]
 
-            # Verify config data
-            assert config.imap.host == "imap.example.com"
-            assert config.imap.port == 993
-            assert config.imap.username == "test@example.com"
-            assert config.imap.password == "env_password"
-            assert config.imap.use_ssl is True
-            assert config.allowed_folders == ["INBOX", "Sent", "Archive"]
-
-            # Test with non-SSL setting
-            monkeypatch.setenv("IMAP_USE_SSL", "false")
-            config = load_config("nonexistent_file.yaml")
-            assert config.imap.use_ssl is False
+        # Test with non-SSL setting
+        monkeypatch.setenv("IMAP_USE_SSL", "false")
+        config = load_config()
+        assert config.imap.use_ssl is False
 
     def test_load_missing_required_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test error when required environment variables are missing."""
         # Ensure IMAP_HOST is not set
         monkeypatch.delenv("IMAP_HOST", raising=False)
 
-        # Mock open to raise FileNotFoundError
-        original_open = open
+        # Ensure no default config files are found
+        monkeypatch.setattr(Path, "exists", lambda self: False)
 
-        def mock_open(*args: Any, **kwargs: Any) -> Any:
-            if args[0] == "nonexistent_file.yaml":
-                raise FileNotFoundError(f"No such file: {args[0]}")
-            return original_open(*args, **kwargs)
+        with pytest.raises(ValueError) as excinfo:
+            load_config()
 
-        # Need to patch the built-in open function
-        with patch("builtins.open", side_effect=mock_open):
-            with pytest.raises(ValueError) as excinfo:
-                load_config("nonexistent_file.yaml")
-
-            assert "IMAP_HOST environment variable not set" in str(excinfo.value)
+        assert "IMAP_HOST environment variable not set" in str(excinfo.value)
 
     def test_load_smtp_from_env_variables(
         self, monkeypatch: pytest.MonkeyPatch
@@ -805,8 +796,8 @@ class TestLoadConfig:
         monkeypatch.setenv("SMTP_PASSWORD", "smtp_password")
         monkeypatch.setenv("SMTP_USE_TLS", "false")
 
-        with patch("builtins.open", side_effect=FileNotFoundError):
-            config = load_config("nonexistent.yaml")
+        monkeypatch.setattr(Path, "exists", lambda self: False)
+        config = load_config()
 
         assert config.smtp is not None
         assert config.smtp.host == "smtp.example.com"
@@ -826,8 +817,8 @@ class TestLoadConfig:
         monkeypatch.delenv("SMTP_PORT", raising=False)
         monkeypatch.delenv("SMTP_USE_TLS", raising=False)
 
-        with patch("builtins.open", side_effect=FileNotFoundError):
-            config = load_config("nonexistent.yaml")
+        monkeypatch.setattr(Path, "exists", lambda self: False)
+        config = load_config()
 
         assert config.smtp is not None
         assert config.smtp.host == "imap.example.com"  # Fallback
@@ -844,8 +835,8 @@ class TestLoadConfig:
         monkeypatch.delenv("SMTP_USERNAME", raising=False)
         monkeypatch.delenv("SMTP_PASSWORD", raising=False)
 
-        with patch("builtins.open", side_effect=FileNotFoundError):
-            config = load_config("nonexistent.yaml")
+        monkeypatch.setattr(Path, "exists", lambda self: False)
+        config = load_config()
 
         assert config.smtp is not None
         assert config.smtp.host == "smtp.example.com"
@@ -896,8 +887,8 @@ class TestLoadConfig:
         monkeypatch.setenv("IMAP_PASSWORD", "env_password")
         monkeypatch.delenv("IMAP_ALLOWED_FOLDERS", raising=False)
 
-        with patch("builtins.open", side_effect=FileNotFoundError):
-            config = load_config("nonexistent.yaml")
+        monkeypatch.setattr(Path, "exists", lambda self: False)
+        config = load_config()
 
         assert config.allowed_folders == ["INBOX"]
 
@@ -911,8 +902,8 @@ class TestLoadConfig:
         monkeypatch.setenv("IMAP_PASSWORD", "env_password")
         monkeypatch.setenv("IMAP_ALLOWED_FOLDERS", "")
 
-        with patch("builtins.open", side_effect=FileNotFoundError):
-            config = load_config("nonexistent.yaml")
+        monkeypatch.setattr(Path, "exists", lambda self: False)
+        config = load_config()
 
         assert config.allowed_folders is None
 
@@ -925,8 +916,8 @@ class TestLoadConfig:
         monkeypatch.setenv("IMAP_PASSWORD", "env_password")
         monkeypatch.setenv("IMAP_ALLOWED_FOLDERS", " INBOX , Sent , Archive ")
 
-        with patch("builtins.open", side_effect=FileNotFoundError):
-            config = load_config("nonexistent.yaml")
+        monkeypatch.setattr(Path, "exists", lambda self: False)
+        config = load_config()
 
         assert config.allowed_folders == ["INBOX", "Sent", "Archive"]
 
