@@ -71,7 +71,7 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 - New MCP tools: register in `tools.py` via `register_tools()`, use `@mcp.tool()` decorator
 - New MCP resources: register in `resources.py` via `register_resources()`
 - Provider-agnostic: do not hardcode provider-specific logic; use IMAP capabilities for feature detection, not hostname checks
-- When changing code, update affected documentation (README.md, this CLAUDE.md, docs/, docstrings) in the same PR to keep docs in sync with the codebase
+- When changing code, update affected documentation (README.md, this AGENTS.md, docs/, docstrings) in the same PR to keep docs in sync with the codebase
 
 ## Git Workflow
 
