@@ -916,10 +916,10 @@ class TestToolFolderValidation:
         mock_context.elicit.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_delete_email_rejects_invalid_folder(
+    async def test_delete_email_rejects_invalid_folder_before_confirmation(
         self, tools: Any, mock_client: Any, mock_context: Any
     ) -> None:
-        """Test that delete_email rejects folder names with injection characters."""
+        """Test that delete_email rejects invalid folder before confirmation."""
         mock_client._validate_folder_name.side_effect = ValueError(
             "contains invalid characters"
         )
@@ -929,6 +929,7 @@ class TestToolFolderValidation:
 
         assert "Invalid folder name" in result
         mock_client.delete_email.assert_not_called()
+        mock_context.elicit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_search_emails_rejects_invalid_folder(

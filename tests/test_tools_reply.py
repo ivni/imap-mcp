@@ -288,14 +288,18 @@ class TestToolsReply:
         assert call_kwargs["reply_to"].address != "list@example.com"
 
     @pytest.mark.asyncio
+    @patch("imap_mcp.tools.get_client_from_context")
     async def test_draft_reply_tool_confirmation_declined(
         self,
+        mock_get_client: MagicMock,
         registered_tools: tuple[dict[str, Any], MagicMock],
         mock_context: MagicMock,
     ) -> None:
         """Test that declining confirmation prevents draft creation."""
         tools_dict, imap_client = registered_tools
         draft_reply_tool = tools_dict["draft_reply_tool"]
+
+        mock_get_client.return_value = imap_client
 
         # Override elicit to return declined
         declined = MagicMock()
@@ -308,5 +312,32 @@ class TestToolsReply:
 
         assert result["status"] == "cancelled"
         assert "not confirmed" in result["message"].lower()
+        imap_client.fetch_email.assert_not_called()
+        imap_client.save_draft_mime.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("imap_mcp.tools.get_client_from_context")
+    async def test_draft_reply_tool_rejects_invalid_folder_before_confirmation(
+        self,
+        mock_get_client: MagicMock,
+        registered_tools: tuple[dict[str, Any], MagicMock],
+        mock_context: MagicMock,
+    ) -> None:
+        """Test that draft_reply_tool rejects invalid folder before confirmation."""
+        tools_dict, imap_client = registered_tools
+        draft_reply_tool = tools_dict["draft_reply_tool"]
+
+        mock_get_client.return_value = imap_client
+        imap_client._validate_folder_name.side_effect = ValueError(
+            "contains invalid characters"
+        )
+
+        result = await draft_reply_tool(
+            folder="INBOX\r\nINJECT", uid=1, reply_body="reply", ctx=mock_context
+        )
+
+        assert result["status"] == "error"
+        assert "Invalid folder name" in result["message"]
+        mock_context.elicit.assert_not_called()
         imap_client.fetch_email.assert_not_called()
         imap_client.save_draft_mime.assert_not_called()

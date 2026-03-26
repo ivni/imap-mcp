@@ -423,3 +423,29 @@ class TestMeetingInviteOrchestration:
         assert result["draft_folder"] == "Drafts"
         assert result["availability"] is True
         mock_imap_client.save_draft_mime.assert_called_once_with(mock_mime_message)
+
+    @pytest.mark.asyncio
+    @patch("imap_mcp.tools.get_client_from_context")
+    async def test_process_meeting_invite_rejects_invalid_folder_before_confirmation(
+        self,
+        mock_get_client: Any,
+        mock_imap_client: Any,
+        mock_context: Any,
+        registered_tools: Any,
+    ) -> None:
+        """Test that process_meeting_invite rejects invalid folder before confirmation."""
+        mock_get_client.return_value = mock_imap_client
+        mock_imap_client._validate_folder_name = MagicMock(
+            side_effect=ValueError("contains invalid characters")
+        )
+
+        process_meeting_invite = registered_tools["process_meeting_invite"]
+        result = await process_meeting_invite(
+            folder="INBOX\r\nINJECT", uid=456, ctx=mock_context
+        )
+
+        assert result["status"] == "error"
+        assert "Invalid folder name" in result["message"]
+        mock_context.elicit.assert_not_called()
+        mock_imap_client.fetch_email.assert_not_called()
+        mock_imap_client.save_draft_mime.assert_not_called()

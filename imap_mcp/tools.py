@@ -259,6 +259,11 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         Returns:
             Dictionary with status and the UID of the created draft (None if server lacks UIDPLUS)
         """
+        client = get_client_from_context(ctx)
+        error = _validate_tool_folder(client, folder)
+        if error:
+            return {"status": "error", "message": error}
+
         confirmation = await require_confirmation(ctx, "save draft reply", folder, uid)
         if confirmation != ConfirmationResult.CONFIRMED:
             if confirmation == ConfirmationResult.ERROR:
@@ -273,10 +278,6 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
 
         from imap_mcp.smtp_client import create_reply_mime
 
-        client = get_client_from_context(ctx)
-        error = _validate_tool_folder(client, folder)
-        if error:
-            return {"status": "error", "message": error}
         email_obj = client.fetch_email(uid, folder)
         if not email_obj:
             return {
@@ -544,16 +545,16 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         Returns:
             Success message or error message
         """
+        client = get_client_from_context(ctx)
+        error = _validate_tool_folder(client, folder)
+        if error:
+            return error
+
         confirmation = await require_confirmation(ctx, "delete", folder, uid)
         if confirmation != ConfirmationResult.CONFIRMED:
             if confirmation == ConfirmationResult.ERROR:
                 return "Action aborted: confirmation system error for delete"
             return "Action cancelled: delete not confirmed by user"
-
-        client = get_client_from_context(ctx)
-        error = _validate_tool_folder(client, folder)
-        if error:
-            return error
 
         try:
             success = client.delete_email(uid, folder)
@@ -849,6 +850,17 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
               - draft_folder: Folder where the draft was saved (if successful)
               - availability: Whether the time slot was available
         """
+        client = get_client_from_context(ctx)
+        error = _validate_tool_folder(client, folder)
+        if error:
+            return {
+                "status": "error",
+                "message": error,
+                "draft_uid": None,
+                "draft_folder": None,
+                "availability": None,
+            }
+
         confirmation = await require_confirmation(
             ctx, "process meeting invite and save draft", folder, uid
         )
@@ -872,16 +884,6 @@ def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
         from imap_mcp.workflows.invite_parser import identify_meeting_invite_details
         from imap_mcp.workflows.meeting_reply import generate_meeting_reply_content
 
-        client = get_client_from_context(ctx)
-        error = _validate_tool_folder(client, folder)
-        if error:
-            return {
-                "status": "error",
-                "message": error,
-                "draft_uid": None,
-                "draft_folder": None,
-                "availability": None,
-            }
         result: Dict[str, Any] = {
             "status": "error",
             "message": "An error occurred during processing",
