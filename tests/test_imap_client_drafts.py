@@ -97,6 +97,34 @@ class TestDraftsFunctionality:
         drafts_folder = mock_imap_client._get_drafts_folder()
         assert drafts_folder == "INBOX"
 
+    def test_get_drafts_folder_dot_delimiter(self, mock_imap_client: Any) -> None:
+        """Test getting the drafts folder with dot hierarchy delimiter."""
+        mock_imap_client._hierarchy_delimiter = "."
+        mock_imap_client.list_folders.return_value = [
+            "INBOX",
+            "INBOX.Sent",
+            "INBOX.Drafts",
+            "INBOX.Trash",
+        ]
+
+        drafts_folder = mock_imap_client._get_drafts_folder()
+        assert drafts_folder == "INBOX.Drafts"
+
+    def test_get_drafts_folder_dot_delimiter_localized(
+        self, mock_imap_client: Any
+    ) -> None:
+        """Test getting a localized drafts folder with dot delimiter."""
+        mock_imap_client._hierarchy_delimiter = "."
+        mock_imap_client.list_folders.return_value = [
+            "INBOX",
+            "INBOX.Sent",
+            "INBOX.Brouillons",
+            "INBOX.Trash",
+        ]
+
+        drafts_folder = mock_imap_client._get_drafts_folder()
+        assert drafts_folder == "INBOX.Brouillons"
+
     @patch("imap_mcp.imap_client.logger")
     def test_save_draft_mime_success(
         self, mock_logger: Any, mock_imap_client: Any, sample_mime_message: Any

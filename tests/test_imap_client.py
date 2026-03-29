@@ -370,6 +370,32 @@ class TestImapClient:
             assert set(client.folder_cache.keys()) == {"INBOX", "Sent", "Drafts"}
             assert client._folder_cache_timestamp is not None
 
+    def test_list_folders_captures_dot_delimiter(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """Test that list_folders stores the hierarchy delimiter from the server."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+
+            mock_imap_client.list_folders.return_value = [
+                ((b"\\HasNoChildren",), b".", "INBOX"),
+                ((b"\\HasNoChildren",), b".", "INBOX.Drafts"),
+            ]
+
+            client.connect()
+            client.list_folders(refresh=True)
+
+            assert client._hierarchy_delimiter == "."
+
     def test_list_folders_cache_expired(self, mock_imap_client: MagicMock) -> None:
         """Test that expired cache triggers server refresh."""
         config = ImapConfig(

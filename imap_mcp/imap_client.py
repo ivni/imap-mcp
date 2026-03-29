@@ -44,6 +44,7 @@ class ImapClient:
         self._folder_cache_timestamp: Optional[datetime] = None
         self.connected = False
         self.current_folder: Optional[str] = None
+        self._hierarchy_delimiter: str = "/"
 
     def connect(self) -> None:
         """Connect to IMAP server.
@@ -167,6 +168,11 @@ class ImapClient:
         assert self.client is not None
         self.folder_cache.clear()
         for flags, delimiter, name in self.client.list_folders():
+            if delimiter is not None:
+                if isinstance(delimiter, bytes):
+                    self._hierarchy_delimiter = delimiter.decode("utf-8")
+                else:
+                    self._hierarchy_delimiter = delimiter
             if isinstance(name, bytes):
                 # Convert bytes to string if necessary
                 name = name.decode("utf-8")
@@ -711,7 +717,7 @@ class ImapClient:
         for folder in folders:
             # Check exact match and basename match (for paths like [Gmail]/Drafts)
             folder_lower = folder.lower()
-            basename = folder_lower.rsplit("/", 1)[-1]
+            basename = folder_lower.rsplit(self._hierarchy_delimiter, 1)[-1]
             if folder_lower in lower_names or basename in lower_names:
                 logger.debug(f"Using drafts folder: {folder}")
                 return folder
