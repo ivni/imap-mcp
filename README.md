@@ -7,7 +7,7 @@ It is a fork of original [non-dirty/imap-mcp](https://github.com/non-dirty/imap-
 * fix security issues
 * make it provider agnostic
 * remove Gmail specific code
-* move fully to uv
+* moved fully to uv
 * move project to docker infrastructure
 
 Model Context Protocol (MCP) server that enables AI assistants to check email, process messages, and learn user preferences through interaction.
@@ -96,12 +96,16 @@ All tools carry [MCP ToolAnnotations](https://modelcontextprotocol.io/specificat
 │   ├── tools.py                    # MCP tools
 │   └── workflows/                  # Meeting invite parsing, replies
 ├── tests/                          # Test suite
+├── docs/
+│   └── COMMIT_CONVENTIONS.md       # Git commit message format
 ├── Dockerfile                      # Multi-stage Docker build
 ├── docker-compose.yml              # Production (Traefik) + dev services
 ├── docker-compose.standalone.yml   # Standalone override (no Traefik)
 ├── .env.example                    # Environment variable template
 ├── .dockerignore                   # Docker build exclusions
 ├── pyproject.toml                  # Project configuration
+├── uv.lock                         # Dependency lockfile (hash-pinned)
+├── AGENTS.md                       # AI assistant instructions
 └── README.md                       # This file
 ```
 
@@ -147,6 +151,41 @@ All tools carry [MCP ToolAnnotations](https://modelcontextprotocol.io/specificat
    claude mcp add --transport http imap-mcp http://localhost:8010/mcp
    ```
 
+### Stdio Transport (Claude Desktop)
+
+For local use without Docker, run the server via stdio transport (the default):
+
+```bash
+uv sync
+uv run python -m imap_mcp.server
+```
+
+Add to Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "imap-mcp": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "imap_mcp.server"],
+      "cwd": "/path/to/imap-mcp",
+      "env": {
+        "IMAP_HOST": "imap.example.com",
+        "IMAP_USERNAME": "you@example.com",
+        "IMAP_PASSWORD": "your_app_password",
+        "IMAP_MCP_LOAD_DOTENV": "true"
+      }
+    }
+  }
+}
+```
+
+Or connect from Claude Code:
+
+```bash
+claude mcp add imap-mcp -- uv run python -m imap_mcp.server
+```
+
 ### Development with Docker
 
 ```bash
@@ -169,16 +208,68 @@ uv run pytest
 
 When running over HTTP (`streamable-http` transport), the server **requires** JWT authentication via an external OIDC provider (Authentik, Keycloak, Auth0, etc.). The server acts as a Resource Server — it validates JWT tokens but does not handle the OAuth flow itself.
 
-Configure via environment variables in `.env`:
-
-| Variable                   | Required   | Description                                    |
-| -------------------------- | ---------- | ---------------------------------------------- |
-| `OIDC_ISSUER_URL`          | Yes (HTTP) | OIDC provider issuer URL                       |
-| `OIDC_JWKS_URI`            | No         | Explicit JWKS endpoint (skips OIDC discovery)  |
-| `OIDC_AUDIENCE`            | No         | Expected JWT audience claim                    |
-| `MCP_RESOURCE_SERVER_URL`  | No         | Public URL of MCP server for OAuth metadata    |
+Configure via environment variables in `.env` — see [Environment Variables](#environment-variables) below for all authentication settings.
 
 The `stdio` transport does not use authentication (protected by OS process isolation).
+
+## Environment Variables
+
+All environment variables override their YAML config equivalents. Passwords are **only** accepted from environment variables (never from config files).
+
+### IMAP Connection
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `IMAP_HOST` | Yes | — | IMAP server hostname |
+| `IMAP_PORT` | No | `993` (SSL) / `143` | IMAP server port |
+| `IMAP_USERNAME` | Yes | — | IMAP login username |
+| `IMAP_PASSWORD` | Yes | — | IMAP login password (env var only) |
+| `IMAP_USE_SSL` | No | `true` | Enable SSL/TLS for IMAP connection |
+| `IMAP_TLS_CA_BUNDLE` | No | system default | Path to custom CA bundle (PEM) for IMAP TLS |
+| `IMAP_ALLOWED_FOLDERS` | No | `INBOX` | Comma-separated folder whitelist; empty string = unrestricted |
+
+### SMTP Connection (optional — falls back to IMAP values)
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `SMTP_HOST` | No | `IMAP_HOST` | SMTP server hostname |
+| `SMTP_PORT` | No | `587` | SMTP server port |
+| `SMTP_USERNAME` | No | `IMAP_USERNAME` | SMTP login username |
+| `SMTP_PASSWORD` | No | `IMAP_PASSWORD` | SMTP login password |
+| `SMTP_USE_TLS` | No | `true` | Enable STARTTLS for SMTP |
+| `SMTP_TLS_CA_BUNDLE` | No | `IMAP_TLS_CA_BUNDLE` | Path to custom CA bundle for SMTP TLS |
+
+### Transport
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `MCP_TRANSPORT` | No | `stdio` | Transport protocol: `stdio` or `streamable-http` |
+| `MCP_HOST` | No | `127.0.0.1` | Bind address for HTTP transport |
+| `MCP_PORT` | No | `8010` | Port for HTTP transport |
+| `IMAP_MCP_CONFIG` | No | — | Path to YAML config file (overrides default locations) |
+
+### Authentication (HTTP transport only)
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OIDC_ISSUER_URL` | Yes (HTTP) | — | OIDC provider issuer URL |
+| `OIDC_JWKS_URI` | No | auto-discovered | Explicit JWKS endpoint (skips OIDC discovery) |
+| `OIDC_AUDIENCE` | No | — | Expected JWT audience claim |
+| `OIDC_ALLOW_HTTP` | No | `false` | Allow HTTP OIDC issuer URL (development only) |
+| `MCP_RESOURCE_SERVER_URL` | No | — | Public URL of MCP server for OAuth metadata |
+
+### Security
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `IMAP_MCP_LOAD_DOTENV` | No | `false` | Set `true` to load `.env` file (disabled by default for security) |
+| `IMAP_MCP_SKIP_CONFIRMATION` | No | `false` | Skip destructive action confirmation (CI/automation only) |
+
+### Docker / Traefik
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `IMAP_MCP_DOMAIN` | No | — | Domain for Traefik reverse proxy routing |
 
 ## Security Considerations
 
@@ -204,7 +295,6 @@ This MCP server requires access to your email account, which contains sensitive 
 * [ ] User preference learning implementation
 * [ ] Advanced search capabilities
 * [ ] Multi-account support
-* [ ] Integration with major email providers
 
 ## Contributing
 
