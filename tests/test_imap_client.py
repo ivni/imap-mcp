@@ -289,6 +289,85 @@ class TestImapClient:
             # Verify client is still connected
             assert client.connected is True
 
+    def test_get_client_returns_client_when_connected(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """Test _get_client() returns the IMAPClient when connected."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+
+            client.connect()
+            result = client._get_client()
+
+            assert result is mock_imap_client
+
+    def test_get_client_raises_connection_error_when_client_none(self) -> None:
+        """Test _get_client() raises ConnectionError when connected=True but client=None."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        # Simulate corrupt state: connected flag is True but client is None
+        client.connected = True
+        client.client = None
+
+        with pytest.raises(ConnectionError, match="Not connected to IMAP server"):
+            client._get_client()
+
+    def test_get_client_auto_connects(self, mock_imap_client: MagicMock) -> None:
+        """Test _get_client() auto-connects when not connected."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+
+            assert client.connected is False
+            result = client._get_client()
+
+            # Verify it connected and returned the client
+            mock_client_class.assert_called_once()
+            mock_imap_client.login.assert_called_once()
+            assert result is mock_imap_client
+
+    def test_ensure_connected_raises_connection_error_not_assertion(self) -> None:
+        """Test ensure_connected() raises ConnectionError, not AssertionError, when client is None."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+
+        # Simulate corrupt state: connected flag is True but client is None
+        client.connected = True
+        client.client = None
+
+        with pytest.raises(ConnectionError, match="Not connected to IMAP server"):
+            client.ensure_connected()
+
     def test_list_folders_from_cache(self, mock_imap_client: MagicMock) -> None:
         """Test listing folders from cache."""
         config = ImapConfig(

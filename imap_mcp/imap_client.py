@@ -114,7 +114,19 @@ class ImapClient:
         """
         if not self.connected:
             self.connect()
-        assert self.client is not None
+        if self.client is None:
+            raise ConnectionError("Not connected to IMAP server")
+
+    def _get_client(self) -> imapclient.IMAPClient:
+        """Return the connected IMAP client, raising if not connected.
+
+        Raises:
+            ConnectionError: If not connected to the IMAP server.
+        """
+        self.ensure_connected()
+        if self.client is None:
+            raise ConnectionError("Not connected to IMAP server")
+        return self.client
 
     def get_capabilities(self) -> List[str]:
         """Get IMAP server capabilities.
@@ -125,9 +137,8 @@ class ImapClient:
         Raises:
             ConnectionError: If not connected and connection fails
         """
-        self.ensure_connected()
-        assert self.client is not None
-        raw_capabilities = self.client.capabilities()
+        client = self._get_client()
+        raw_capabilities = client.capabilities()
 
         # Convert byte strings to regular strings and normalize case
         capabilities = []
@@ -165,9 +176,9 @@ class ImapClient:
 
         # Get folders from server
         folders = []
-        assert self.client is not None
+        client = self._get_client()
         self.folder_cache.clear()
-        for flags, delimiter, name in self.client.list_folders():
+        for flags, delimiter, name in client.list_folders():
             if delimiter is not None:
                 if isinstance(delimiter, bytes):
                     self._hierarchy_delimiter = delimiter.decode("utf-8")
@@ -269,13 +280,10 @@ class ImapClient:
         if not self._is_folder_allowed(folder):
             raise ValueError(f"Folder '{folder}' is not allowed")
 
-        self.ensure_connected()
-        assert self.client is not None
+        client = self._get_client()
 
         try:
-            result: Dict[str, Any] = self.client.select_folder(
-                folder, readonly=readonly
-            )
+            result: Dict[str, Any] = client.select_folder(folder, readonly=readonly)
             self.current_folder = folder
             logger.debug(f"Selected folder '{folder}'")
             return result
@@ -302,9 +310,8 @@ class ImapClient:
         Raises:
             ConnectionError: If not connected and connection fails
         """
-        self.ensure_connected()
         self.select_folder(folder, readonly=True)
-        assert self.client is not None
+        client = self._get_client()
 
         resolved_criteria: Union[str, List[Any], Tuple[Any, ...], Sequence[Any]] = (
             criteria
@@ -336,7 +343,7 @@ class ImapClient:
             if criteria.lower() in criteria_map:
                 resolved_criteria = criteria_map[criteria.lower()]
 
-        results = self.client.search(resolved_criteria, charset=charset)
+        results = client.search(resolved_criteria, charset=charset)
         logger.debug(f"Search returned {len(results)} results")
         return list(results)
 
@@ -355,13 +362,12 @@ class ImapClient:
             ConnectionError: If not connected and connection fails
         """
         self._validate_uid(uid)
-        self.ensure_connected()
         self.select_folder(folder, readonly=True)
-        assert self.client is not None
+        client = self._get_client()
 
         # Fetch message data with BODY.PEEK[] to get all parts including headers
         # Using BODY.PEEK[] instead of RFC822 to avoid setting the \Seen flag
-        result = self.client.fetch([uid], ["BODY.PEEK[]", "FLAGS"])
+        result = client.fetch([uid], ["BODY.PEEK[]", "FLAGS"])
 
         if not result or uid not in result:
             logger.warning(f"Message with UID {uid} not found in folder {folder}")
@@ -414,7 +420,6 @@ class ImapClient:
             )
             uids = uids[:MAX_FETCH_UIDS]
 
-        self.ensure_connected()
         self.select_folder(folder, readonly=True)
 
         # Apply limit if specified
@@ -426,8 +431,8 @@ class ImapClient:
             return {}
 
         # Use BODY.PEEK[] to get full message including all parts and headers
-        assert self.client is not None
-        result = self.client.fetch(uids, ["BODY.PEEK[]", "FLAGS"])
+        client = self._get_client()
+        result = client.fetch(uids, ["BODY.PEEK[]", "FLAGS"])
 
         # Parse emails
         emails = {}
@@ -604,15 +609,14 @@ class ImapClient:
             OSError: If a network/socket error occurs
         """
         self._validate_uid(uid)
-        self.ensure_connected()
         self.select_folder(folder)
-        assert self.client is not None
+        client = self._get_client()
 
         if value:
-            self.client.add_flags([uid], flag)
+            client.add_flags([uid], flag)
             logger.debug(f"Added flag {flag} to message {uid}")
         else:
-            self.client.remove_flags([uid], flag)
+            client.remove_flags([uid], flag)
             logger.debug(f"Removed flag {flag} from message {uid}")
         return True
 
@@ -652,15 +656,15 @@ class ImapClient:
 
         # Select source folder
         self.select_folder(source_folder)
-        assert self.client is not None
+        client = self._get_client()
 
         # Step 1: Copy to target (if this fails, no state change)
-        self.client.copy([uid], target_folder)
+        client.copy([uid], target_folder)
 
         # Step 2: Delete from source (if this fails, email is duplicated)
         try:
-            self.client.add_flags([uid], r"\Deleted")
-            self.client.expunge()
+            client.add_flags([uid], r"\Deleted")
+            client.expunge()
         except (IMAPClientError, OSError) as e:
             raise IMAPClientError(
                 f"Move partially completed: email was copied to '{target_folder}' "
@@ -687,12 +691,11 @@ class ImapClient:
             OSError: If a network/socket error occurs
         """
         self._validate_uid(uid)
-        self.ensure_connected()
         self.select_folder(folder)
-        assert self.client is not None
+        client = self._get_client()
 
-        self.client.add_flags([uid], r"\Deleted")
-        self.client.expunge()
+        client.add_flags([uid], r"\Deleted")
+        client.expunge()
         logger.debug(f"Deleted message {uid} from {folder}")
         return True
 
@@ -752,8 +755,8 @@ class ImapClient:
             message_bytes = message.as_string().encode("utf-8")
 
         # Save the draft with Draft flag
-        assert self.client is not None
-        response = self.client.append(drafts_folder, message_bytes, flags=(r"\Draft",))
+        client = self._get_client()
+        response = client.append(drafts_folder, message_bytes, flags=(r"\Draft",))
 
         # Try to extract the UID from the response
         uid = None
