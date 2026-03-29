@@ -30,7 +30,7 @@ jobs:
         run: uv sync --frozen --extra dev
 
       - name: Dependency audit (pip-audit)
-        run: uv run pip-audit
+        run: uv run pip-audit --ignore-vuln CVE-2026-4539  # pygments, no fix released yet
 
       - name: Lint (ruff)
         run: uv run ruff check .
