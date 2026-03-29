@@ -46,7 +46,7 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 - `imap_mcp/resources.py` — MCP resource registrations with title/description (folders, list, search, email content)
 - `imap_mcp/models.py` — Data models: Email, EmailAddress, EmailContent, EmailAttachment
 - `imap_mcp/auth.py` — JWT authentication: OIDC provider verification via JWKS (RS256)
-- `imap_mcp/smtp_client.py` — Reply composition with MIME (plain text + HTML)
+- `imap_mcp/smtp_client.py` — Reply composition with MIME (plain text + HTML); nh3-based HTML sanitization for quoted content
 - `imap_mcp/workflows/` — Meeting invite parsing, calendar mock, reply generation
 
 ## Authentication

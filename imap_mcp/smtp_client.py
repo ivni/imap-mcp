@@ -10,10 +10,80 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import List, Optional, Union
 
+import nh3
+
 from imap_mcp.config import SmtpConfig, create_ssl_context
 from imap_mcp.models import Email, EmailAddress
 
 logger = logging.getLogger(__name__)
+
+# Reusable HTML sanitizer for quoting original email content in replies.
+_reply_sanitizer = nh3.Cleaner(
+    tags={
+        "a",
+        "abbr",
+        "b",
+        "blockquote",
+        "br",
+        "code",
+        "dd",
+        "del",
+        "div",
+        "dl",
+        "dt",
+        "em",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "hr",
+        "i",
+        "ins",
+        "li",
+        "ol",
+        "p",
+        "pre",
+        "s",
+        "span",
+        "strong",
+        "sub",
+        "sup",
+        "table",
+        "tbody",
+        "td",
+        "tfoot",
+        "th",
+        "thead",
+        "tr",
+        "u",
+        "ul",
+    },
+    clean_content_tags={"script", "style"},
+    attributes={
+        "a": {"href", "title"},
+        "td": {"colspan", "rowspan"},
+        "th": {"colspan", "rowspan"},
+    },
+    url_schemes={"http", "https", "mailto"},
+)
+
+
+def sanitize_html_for_quoting(untrusted_html: str) -> str:
+    """Sanitize untrusted HTML for safe embedding in a reply blockquote.
+
+    Preserves basic formatting tags while stripping dangerous elements
+    (scripts, event handlers, iframes, forms, tracking pixels) and
+    restricting URL schemes to http, https, and mailto.
+
+    Args:
+        untrusted_html: Raw HTML from the original email.
+
+    Returns:
+        Sanitized HTML safe for embedding in a blockquote.
+    """
+    return _reply_sanitizer.clean(untrusted_html)
 
 
 def verify_smtp_connection(config: SmtpConfig) -> bool:
@@ -166,15 +236,24 @@ def create_reply_mime(
         # Add HTML part
         html_content = html_body
         if original_email.content.html:
-            # Add original HTML with a divider
-            html_content += (
-                f'\n<div style="border-top: 1px solid #ccc; margin-top: 20px; padding-top: 10px;">'
-                f"\n<p>On {email.utils.format_datetime(original_email.date or datetime.now())}, {html.escape(str(original_email.from_))} wrote:</p>"
-                f'\n<blockquote style="margin: 0 0 0 .8ex; border-left: 1px solid #ccc; padding-left: 1ex;">'
-                f"\n{original_email.content.html}"
-                f"\n</blockquote>"
-                f"\n</div>"
-            )
+            sanitized = sanitize_html_for_quoting(original_email.content.html)
+            if not sanitized.strip():
+                # Sanitization removed all visible content (e.g. image-only email);
+                # fall back to escaped plain text so the quote isn't blank.
+                fallback = original_email.content.text or ""
+                sanitized = (
+                    html.escape(fallback).replace("\n", "<br>") if fallback else ""
+                )
+            if sanitized:
+                # Add original HTML with a divider
+                html_content += (
+                    f'\n<div style="border-top: 1px solid #ccc; margin-top: 20px; padding-top: 10px;">'
+                    f"\n<p>On {email.utils.format_datetime(original_email.date or datetime.now())}, {html.escape(str(original_email.from_))} wrote:</p>"
+                    f'\n<blockquote style="margin: 0 0 0 .8ex; border-left: 1px solid #ccc; padding-left: 1ex;">'
+                    f"\n{sanitized}"
+                    f"\n</blockquote>"
+                    f"\n</div>"
+                )
         else:
             # Convert plain text to HTML for quoting
             original_text = original_email.content.get_best_content()

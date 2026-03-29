@@ -8,7 +8,11 @@ import pytest
 
 from imap_mcp.config import SmtpConfig
 from imap_mcp.models import Email, EmailAddress, EmailContent
-from imap_mcp.smtp_client import create_reply_mime, verify_smtp_connection
+from imap_mcp.smtp_client import (
+    create_reply_mime,
+    sanitize_html_for_quoting,
+    verify_smtp_connection,
+)
 
 
 class TestCreateReplyMime:
@@ -370,6 +374,170 @@ class TestCreateReplyMime:
 
         # Verify the original email's quoted content also appears
         assert "wrote:" in html_text
+
+
+class TestHtmlSanitizationInReply:
+    """Tests for HTML sanitization of original email content in replies (fixes #52)."""
+
+    def _extract_reply_html(self, original_html: str) -> str:
+        """Helper: create a reply to an email with the given HTML and return the HTML part."""
+        email_obj = Email(
+            message_id="<sanitize@example.com>",
+            subject="Sanitization Test",
+            from_=EmailAddress(name="Sender", address="sender@example.com"),
+            to=[EmailAddress(name="Recipient", address="recipient@example.com")],
+            date=datetime(2024, 1, 1, 12, 0, 0),
+            content=EmailContent(text="fallback text", html=original_html),
+            headers={},
+        )
+        reply_to = EmailAddress(name="Recipient", address="recipient@example.com")
+        mime_message = create_reply_mime(
+            original_email=email_obj,
+            reply_to=reply_to,
+            body="My reply.",
+            html_body="<p>My reply.</p>",
+        )
+        alternative = mime_message.get_payload(0)
+        html_part = alternative.get_payload(1)  # type: ignore[union-attr]
+        return html_part.get_payload(decode=True).decode()  # type: ignore[union-attr]
+
+    def test_script_tags_stripped_from_original_html(self) -> None:
+        """Script tags and their content must be completely removed."""
+        html_text = self._extract_reply_html(
+            "<script>alert('xss')</script><p>Safe content</p>"
+        )
+        assert "<p>Safe content</p>" in html_text
+        assert "<script>" not in html_text
+        assert "alert" not in html_text
+
+    def test_event_handlers_stripped_from_original_html(self) -> None:
+        """Event handler attributes must be removed."""
+        html_text = self._extract_reply_html(
+            '<div onclick="evil()" onmouseover="bad()"><p>Content</p></div>'
+        )
+        assert "<p>Content</p>" in html_text
+        assert "onclick" not in html_text
+        assert "onmouseover" not in html_text
+
+    def test_iframe_embed_object_stripped(self) -> None:
+        """Dangerous embedding tags must be removed."""
+        html_text = self._extract_reply_html(
+            '<p>Before</p><iframe src="https://evil.com"></iframe>'
+            '<object data="evil.swf"></object><embed src="evil.swf">'
+            "<p>After</p>"
+        )
+        assert "Before" in html_text
+        assert "After" in html_text
+        assert "<iframe" not in html_text
+        assert "<object" not in html_text
+        assert "<embed" not in html_text
+
+    def test_tracking_pixel_img_stripped(self) -> None:
+        """Tracking pixel img tags must be removed."""
+        html_text = self._extract_reply_html(
+            "<p>Hello</p>"
+            '<img src="https://tracker.evil.com/pixel.gif" width="1" height="1">'
+            "<p>World</p>"
+        )
+        assert "Hello" in html_text
+        assert "World" in html_text
+        assert "<img" not in html_text
+        assert "tracker.evil.com" not in html_text
+
+    def test_style_tags_stripped_from_original_html(self) -> None:
+        """Style tags and their content must be completely removed."""
+        html_text = self._extract_reply_html(
+            "<style>body { background: url('https://track.evil.com'); }</style>"
+            "<p>Content</p>"
+        )
+        assert "Content" in html_text
+        assert "<style>" not in html_text
+        assert "background" not in html_text
+
+    def test_safe_formatting_preserved_in_original_html(self) -> None:
+        """Safe formatting tags must be preserved in the quoted original."""
+        html_text = self._extract_reply_html(
+            "<h1>Title</h1>"
+            "<p>Text with <b>bold</b>, <i>italic</i>, "
+            'and <a href="https://example.com">link</a>.</p>'
+            "<ul><li>Item 1</li><li>Item 2</li></ul>"
+        )
+        assert "<h1>" in html_text
+        assert "<b>bold</b>" in html_text
+        assert "<i>italic</i>" in html_text
+        assert "<a " in html_text
+        assert "https://example.com" in html_text
+        assert "<ul>" in html_text
+        assert "<li>" in html_text
+
+    def test_sanitize_html_for_quoting_unit(self) -> None:
+        """Direct unit tests of the sanitize_html_for_quoting function."""
+        # Empty string
+        assert sanitize_html_for_quoting("") == ""
+
+        # javascript: URL stripped from href
+        result = sanitize_html_for_quoting('<a href="javascript:alert(1)">Click</a>')
+        assert "javascript:" not in result
+        assert "Click" in result
+
+        # Nested script tags
+        result = sanitize_html_for_quoting(
+            "<script><script>alert('nested')</script></script><p>Safe</p>"
+        )
+        assert "<script>" not in result
+        assert "alert" not in result
+        assert "<p>Safe</p>" in result
+
+        # Form elements stripped
+        result = sanitize_html_for_quoting(
+            '<form action="https://evil.com"><input type="text"><button>Submit</button></form>'
+        )
+        assert "<form" not in result
+        assert "<input" not in result
+        assert "<button" not in result
+
+        # data: URI stripped from href
+        result = sanitize_html_for_quoting(
+            '<a href="data:text/html,<script>alert(1)</script>">Click</a>'
+        )
+        assert "data:" not in result
+        assert "Click" in result
+
+    def test_inline_style_attributes_stripped(self) -> None:
+        """Inline style attributes must be removed from allowed tags in quoted content."""
+        result = sanitize_html_for_quoting(
+            '<p style="background:url(https://tracker.com/pixel)">Text</p>'
+        )
+        assert "Text" in result
+        assert "style=" not in result
+        assert "tracker.com" not in result
+
+    def test_image_only_html_falls_back_to_text(self) -> None:
+        """When sanitization strips all visible content, fall back to text."""
+        email_obj = Email(
+            message_id="<img@example.com>",
+            subject="Photo",
+            from_=EmailAddress(name="Sender", address="sender@example.com"),
+            to=[EmailAddress(name="Recipient", address="recipient@example.com")],
+            date=datetime(2024, 1, 1, 12, 0, 0),
+            content=EmailContent(
+                text="See the attached photo of the team.",
+                html='<img src="https://example.com/photo.jpg">',
+            ),
+            headers={},
+        )
+        reply_to = EmailAddress(name="Recipient", address="recipient@example.com")
+        mime_message = create_reply_mime(
+            original_email=email_obj,
+            reply_to=reply_to,
+            body="Thanks!",
+            html_body="<p>Thanks!</p>",
+        )
+        alternative = mime_message.get_payload(0)
+        html_part = alternative.get_payload(1)  # type: ignore[union-attr]
+        html_text = html_part.get_payload(decode=True).decode()  # type: ignore[union-attr]
+        # Should fall back to escaped text, not show empty blockquote
+        assert "See the attached photo" in html_text
 
 
 class TestVerifySmtpConnection:
