@@ -85,11 +85,13 @@ class TestImapClient:
                 mock_create_ctx.assert_called_once_with(None)
 
                 # Verify connection was established with explicit ssl_context
+                # and the default socket timeout
                 mock_client_class.assert_called_once_with(
                     "imap.example.com",
                     port=993,
                     ssl=True,
                     ssl_context=mock_ctx,
+                    timeout=30.0,
                 )
 
                 # Verify login was called with correct credentials
@@ -125,6 +127,7 @@ class TestImapClient:
                     port=993,
                     ssl=True,
                     ssl_context=mock_ctx,
+                    timeout=30.0,
                 )
 
     def test_connect_no_ssl_no_context(self, mock_imap_client: MagicMock) -> None:
@@ -147,7 +150,34 @@ class TestImapClient:
                 port=143,
                 ssl=False,
                 ssl_context=None,
+                timeout=30.0,
             )
+
+    def test_connect_passes_custom_timeout(self, mock_imap_client: MagicMock) -> None:
+        """Test that a configured timeout is passed through to IMAPClient."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+            timeout=5.0,
+        )
+        client = ImapClient(config)
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            with patch("imap_mcp.imap_client.create_ssl_context") as mock_create_ctx:
+                mock_ctx = mock_create_ctx.return_value
+                mock_client_class.return_value = mock_imap_client
+                client.connect()
+
+                mock_client_class.assert_called_once_with(
+                    "imap.example.com",
+                    port=993,
+                    ssl=True,
+                    ssl_context=mock_ctx,
+                    timeout=5.0,
+                )
 
     def test_connect_failure(self) -> None:
         """Test connection failure."""

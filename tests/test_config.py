@@ -254,6 +254,89 @@ class TestImapConfig:
         )
         assert config.tls_ca_bundle is None
 
+    def test_timeout_defaults_to_30(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test timeout defaults to 30s when not configured."""
+        monkeypatch.setenv("IMAP_PASSWORD", "password")
+        monkeypatch.delenv("IMAP_TIMEOUT", raising=False)
+
+        config = ImapConfig.from_dict(
+            {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+            }
+        )
+        assert config.timeout == 30.0
+
+    def test_timeout_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test timeout is read from IMAP_TIMEOUT env var."""
+        monkeypatch.setenv("IMAP_PASSWORD", "password")
+        monkeypatch.setenv("IMAP_TIMEOUT", "15")
+
+        config = ImapConfig.from_dict(
+            {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+            }
+        )
+        assert config.timeout == 15.0
+
+    def test_timeout_from_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test timeout from config dict when env var is not set."""
+        monkeypatch.setenv("IMAP_PASSWORD", "password")
+        monkeypatch.delenv("IMAP_TIMEOUT", raising=False)
+
+        config = ImapConfig.from_dict(
+            {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+                "timeout": 45,
+            }
+        )
+        assert config.timeout == 45.0
+
+    def test_timeout_env_overrides_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test env var takes precedence over config dict for timeout."""
+        monkeypatch.setenv("IMAP_PASSWORD", "password")
+        monkeypatch.setenv("IMAP_TIMEOUT", "10")
+
+        config = ImapConfig.from_dict(
+            {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+                "timeout": 60,
+            }
+        )
+        assert config.timeout == 10.0
+
+    def test_timeout_invalid_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test a non-numeric timeout raises ValueError."""
+        monkeypatch.setenv("IMAP_PASSWORD", "password")
+        monkeypatch.setenv("IMAP_TIMEOUT", "soon")
+
+        with pytest.raises(ValueError, match="Invalid IMAP timeout"):
+            ImapConfig.from_dict(
+                {
+                    "host": "imap.example.com",
+                    "username": "test@example.com",
+                }
+            )
+
+    @pytest.mark.parametrize("bad_value", ["0", "-5"])
+    def test_timeout_non_positive_raises(
+        self, monkeypatch: pytest.MonkeyPatch, bad_value: str
+    ) -> None:
+        """Test a non-positive timeout raises ValueError."""
+        monkeypatch.setenv("IMAP_PASSWORD", "password")
+        monkeypatch.setenv("IMAP_TIMEOUT", bad_value)
+
+        with pytest.raises(ValueError, match="must be a positive number"):
+            ImapConfig.from_dict(
+                {
+                    "host": "imap.example.com",
+                    "username": "test@example.com",
+                }
+            )
+
 
 class TestSmtpConfig:
     """Test cases for the SmtpConfig class."""

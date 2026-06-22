@@ -230,6 +230,7 @@ All environment variables override their YAML config equivalents. Passwords are 
 | `IMAP_PASSWORD` | Yes | — | IMAP login password (env var only) |
 | `IMAP_USE_SSL` | No | `true` | Enable SSL/TLS for IMAP connection |
 | `IMAP_TLS_CA_BUNDLE` | No | system default | Path to custom CA bundle (PEM) for IMAP TLS |
+| `IMAP_TIMEOUT` | No | `30` | Socket timeout in seconds for IMAP operations (must be > 0) |
 | `IMAP_ALLOWED_FOLDERS` | No | `INBOX` | Comma-separated folder whitelist; empty string = unrestricted |
 
 ### SMTP Connection (optional — falls back to IMAP values)

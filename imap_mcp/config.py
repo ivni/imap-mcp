@@ -11,6 +11,38 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+# Default socket timeout (seconds) for IMAP operations. Bounds how long a slow
+# or unresponsive server can block a call; overridable via IMAP_TIMEOUT or the
+# imap.timeout YAML key.
+DEFAULT_IMAP_TIMEOUT = 30.0
+
+
+def _parse_timeout(value: Any) -> float:
+    """Parse and validate an IMAP socket timeout in seconds.
+
+    Args:
+        value: Raw timeout value (str from env, number from YAML, or None).
+
+    Returns:
+        The timeout in seconds, or DEFAULT_IMAP_TIMEOUT when *value* is None.
+
+    Raises:
+        ValueError: If *value* is not a positive number.
+    """
+    if value is None:
+        return DEFAULT_IMAP_TIMEOUT
+    try:
+        timeout = float(value)
+    except (TypeError, ValueError) as e:
+        raise ValueError(
+            f"Invalid IMAP timeout {value!r}: must be a positive number of seconds"
+        ) from e
+    if timeout <= 0:
+        raise ValueError(
+            f"Invalid IMAP timeout {timeout}: must be a positive number of seconds"
+        )
+    return timeout
+
 
 def _maybe_load_dotenv() -> None:
     """Load .env file only when explicitly opted in via IMAP_MCP_LOAD_DOTENV=true.
@@ -66,6 +98,7 @@ class ImapConfig:
     password: str
     use_ssl: bool = True
     tls_ca_bundle: Optional[str] = None
+    timeout: float = DEFAULT_IMAP_TIMEOUT
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ImapConfig":
@@ -90,6 +123,11 @@ class ImapConfig:
             os.environ.get("IMAP_TLS_CA_BUNDLE") or data.get("tls_ca_bundle") or None
         )
 
+        timeout_raw: Any = os.environ.get("IMAP_TIMEOUT")
+        if timeout_raw is None:
+            timeout_raw = data.get("timeout")
+        timeout = _parse_timeout(timeout_raw)
+
         return cls(
             host=data["host"],
             port=data.get("port", 993 if data.get("use_ssl", True) else 143),
@@ -97,6 +135,7 @@ class ImapConfig:
             password=password,
             use_ssl=data.get("use_ssl", True),
             tls_ca_bundle=tls_ca_bundle,
+            timeout=timeout,
         )
 
 

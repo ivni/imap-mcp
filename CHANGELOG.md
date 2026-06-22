@@ -38,6 +38,9 @@ plus extensive security hardening were added.
 - TTL on the IMAP folder cache (#33).
 - Fetch-count and attachment-size limits to bound resource usage (#17).
 - Custom TLS CA bundle support (`IMAP_TLS_CA_BUNDLE`, `SMTP_TLS_CA_BUNDLE`) (#9).
+- Configurable IMAP socket timeout (`IMAP_TIMEOUT` env / `imap.timeout` YAML,
+  default 30s) so a hung or unresponsive server can no longer block a call
+  indefinitely (#62).
 - Multi-stage Docker build with a non-root user, base images pinned by digest,
   and container resource limits (#29); standalone and Traefik compose files.
 - GitHub Actions CI: lockfile hash verification, dependency audit (`pip-audit`),

@@ -50,7 +50,9 @@ class ImapClient:
         """Connect to IMAP server.
 
         Creates an explicit SSL context (with optional custom CA bundle)
-        for TLS connections instead of relying on the library default.
+        for TLS connections instead of relying on the library default. A
+        socket timeout (``config.timeout``) bounds how long connect and
+        subsequent reads can block on an unresponsive server.
 
         Raises:
             ConnectionError: If connection fails
@@ -65,6 +67,7 @@ class ImapClient:
                 port=self.config.port,
                 ssl=self.config.use_ssl,
                 ssl_context=ssl_context,
+                timeout=self.config.timeout,
             )
 
             self.client.login(self.config.username, self.config.password)
