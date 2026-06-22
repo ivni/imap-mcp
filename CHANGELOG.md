@@ -1,0 +1,102 @@
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+> This project is pre-1.0 (Development Status :: Alpha). No versioned release has
+> been tagged yet, so all changes since the fork are listed under **Unreleased**.
+> The first tagged release will move these entries under a dated `0.1.0` heading.
+
+## [Unreleased]
+
+This is a hardened, provider-agnostic fork of
+[non-dirty/imap-mcp](https://github.com/non-dirty/imap-mcp). Gmail-specific code
+was removed, the project was moved to `uv` and Docker, and OIDC authentication
+plus extensive security hardening were added.
+
+### Added
+
+- Provider-agnostic IMAP MCP server (works with any IMAP/SMTP server; no
+  hostname-based provider logic — uses IMAP capabilities for feature detection).
+- MCP tools grouped into three safety tiers via `ToolAnnotations` (read-only,
+  write non-destructive, write destructive); every tool has a title and
+  annotations.
+- MCP elicitation confirmation for destructive tools (delete, move, send/draft,
+  meeting invite) (#1).
+- OIDC JWT authentication for the `streamable-http` transport — the server acts
+  as a Resource Server, validating RS256 tokens against the provider's JWKS;
+  provider-agnostic via environment variables.
+- `stdio` and `streamable-http` transports.
+- Reply composition (MIME plain text + HTML) with proper threading headers
+  (`In-Reply-To`, `References`), reply-all and CC support; drafts saved to the
+  appropriate folder.
+- Meeting invite parsing, mock calendar availability, and reply-generation
+  workflows.
+- `offset`/`limit` pagination for the `search_emails` tool (#34).
+- TTL on the IMAP folder cache (#33).
+- Fetch-count and attachment-size limits to bound resource usage (#17).
+- Custom TLS CA bundle support (`IMAP_TLS_CA_BUNDLE`, `SMTP_TLS_CA_BUNDLE`) (#9).
+- Multi-stage Docker build with a non-root user, base images pinned by digest,
+  and container resource limits (#29); standalone and Traefik compose files.
+- GitHub Actions CI: lockfile hash verification, dependency audit (`pip-audit`),
+  lint (`ruff`), format check, type check (`mypy` strict), SAST (`bandit`),
+  unit tests with coverage ≥80%, Docker build, and Trivy image scan
+  (#6, #25, #26, #27, #28, #30).
+- `AGENTS.md` and `docs/COMMIT_CONVENTIONS.md`.
+
+### Changed
+
+- Migrated dependency management fully to `uv`; dependencies pinned by hash in
+  `uv.lock` and installed with `--frozen` in CI and Docker.
+- Replaced broad `except Exception` handlers with specific exceptions in core
+  paths (#32).
+- Removed dead code: `mcp_protocol.py` (#10), `TASKS_FILE`/`create_task` (#8),
+  `get_smtp_client_from_context()` (#31), and the unused `imap_client`
+  parameter on `register_tools`/`register_resources` (#55).
+
+### Security
+
+- Folder-name sanitization against IMAP injection characters, enforced across
+  all tools (#3, #15); confirmation prompts sanitize folder names before
+  interpolation (#49).
+- Parameterized search criteria; fixed IMAP injection via email headers in
+  `fetch_thread()` (#2).
+- `allowed_folders` defaults to INBOX-only and is enforced in every code path,
+  including `search_emails(folder=None)` and `move_email` (#4, #21, #45).
+- Passwords accepted only from environment variables; YAML password field is
+  ignored with a warning.
+- `.env` file loading is opt-in via `IMAP_MCP_LOAD_DOTENV` (#7).
+- Removed email-subject logging from workflow modules (#5).
+- HTML output hardening: `html.escape()` in the SMTP client (#13), escaped
+  sender name to fix reply XSS (#40), and `nh3` sanitization of quoted original
+  HTML in replies (#52).
+- OIDC issuer URL must be HTTPS (#18); JWKS discovery failure is fatal (no
+  guessed fallback URI) (#14).
+- UID validation on all tool and resource handlers (#12); email address format
+  validation (#16).
+- Explicit TLS context with certificate verification enabled by default (#9).
+- Routine dependency/base-image upgrades to patch CVEs (cryptography, pyjwt,
+  requests, `python:3.13-slim`).
+
+### Fixed
+
+- Multi-folder search pagination dropping results (#41).
+- Environment-variable config overrides silently ignored when a YAML file
+  exists (#42).
+- Meeting invite parser using the email send date instead of the invite date
+  (#43); AM-midnight parsing and 23:xx hour-overflow crash (#35, #44).
+- Silent mutation failures masking data corruption in IMAP operations (#46).
+- `process_email` reporting success even when an IMAP action failed (#36).
+- Draft save reporting a false failure on servers without UIDPLUS (#48).
+- Drafts-folder detection on servers using a dot hierarchy delimiter (#50).
+- `Email.from_message` mis-splitting recipients with commas in display names
+  (#37); `decode_mime_header` crash on malformed encoded headers (#38).
+- Reply using the wrong sender address (used `config.username`) (#11).
+- Explicitly specified config file silently ignored when missing — now raises
+  `FileNotFoundError` (#47).
+- Replaced `assert`-based null checks in production paths with explicit
+  `ConnectionError` (#51).
+
+[Unreleased]: https://github.com/ivni/imap-mcp/commits/main
