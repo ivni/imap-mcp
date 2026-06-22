@@ -145,6 +145,10 @@ All tools carry [MCP ToolAnnotations](https://modelcontextprotocol.io/specificat
    * **Standalone** — MCP server available at `http://localhost:8010/mcp`
    * **Traefik** — MCP server available at `https://<IMAP_MCP_DOMAIN>/mcp`
 
+   Unauthenticated health endpoints are exposed for orchestrators: `GET /health`
+   (liveness, always 200) and `GET /ready` (readiness, 200 when IMAP is
+   reachable, else 503). The container `HEALTHCHECK` uses `/health`.
+
 4. Connect from Claude Code:
 
    ```bash

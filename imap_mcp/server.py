@@ -6,10 +6,13 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, Optional
 
+import anyio
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
 
 from imap_mcp.config import ServerConfig, load_config
 from imap_mcp.imap_client import ImapClient
@@ -85,6 +88,27 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict]:
         imap_client.disconnect()
 
 
+def _verify_imap_reachable(config: ServerConfig) -> None:
+    """Open a short-lived IMAP connection and verify it works.
+
+    Used by the readiness probe. Establishes its own connection rather than
+    reusing a session's client, because IMAP connections in this server are
+    created per MCP session (there is no shared server-wide connection).
+
+    Args:
+        config: Server configuration.
+
+    Raises:
+        ConnectionError: If the IMAP server is unreachable or login fails.
+    """
+    client = ImapClient(config.imap, config.allowed_folders)
+    try:
+        client.connect()
+        client.verify_connection()
+    finally:
+        client.disconnect()
+
+
 def create_server(
     config_path: Optional[str] = None,
     debug: bool = False,
@@ -156,6 +180,32 @@ def create_server(
     # per-request from the lifespan context (see server_lifespan).
     register_resources(server)
     register_tools(server)
+
+    # Health endpoints for container orchestrators. Routes registered via
+    # custom_route bypass OIDC authentication by design (see FastMCP docs),
+    # so probes work without credentials. Only reachable over HTTP transport.
+    @server.custom_route("/health", methods=["GET"])
+    async def health_check(request: Request) -> Response:
+        """Liveness probe: 200 whenever the process is serving HTTP."""
+        return JSONResponse({"status": "ok"})
+
+    @server.custom_route("/ready", methods=["GET"])
+    async def readiness_check(request: Request) -> Response:
+        """Readiness probe: 200 only when the IMAP server is reachable.
+
+        Opens a short-lived IMAP connection off the event loop. Returns 503
+        when IMAP is unreachable so orchestrators hold traffic until the
+        dependency recovers. Response bodies carry no connection details.
+        """
+        try:
+            await anyio.to_thread.run_sync(_verify_imap_reachable, config)
+        except Exception:
+            # A probe must never propagate: any failure means "not ready".
+            # Detail is intentionally omitted to avoid leaking config to
+            # unauthenticated callers; the cause is logged server-side.
+            logger.warning("Readiness check failed: IMAP server unreachable")
+            return JSONResponse({"status": "unavailable"}, status_code=503)
+        return JSONResponse({"status": "ready"})
 
     # Add server status tool
     @server.tool(

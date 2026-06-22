@@ -41,6 +41,10 @@ plus extensive security hardening were added.
 - Configurable IMAP socket timeout (`IMAP_TIMEOUT` env / `imap.timeout` YAML,
   default 30s) so a hung or unresponsive server can no longer block a call
   indefinitely (#62).
+- Unauthenticated `GET /health` (liveness) and `GET /ready` (readiness, verifies
+  IMAP reachability) HTTP endpoints for container orchestrators; the Docker
+  `HEALTHCHECK` now probes `/health` instead of the auth-gated `/mcp`, which had
+  reported healthy containers as permanently unhealthy (#64).
 - Multi-stage Docker build with a non-root user, base images pinned by digest,
   and container resource limits (#29); standalone and Traefik compose files.
 - GitHub Actions CI: lockfile hash verification, dependency audit (`pip-audit`),

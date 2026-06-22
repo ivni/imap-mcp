@@ -81,13 +81,31 @@ The compose files cap each container at `512M` memory and `1.0` CPU, and rotate
 JSON logs (`max-size: 10m`, `max-file: 3`). Adjust the `deploy.resources.limits`
 block to your workload.
 
-### Healthcheck caveat
+### Health endpoints
 
-The bundled `HEALTHCHECK` probes `GET /mcp`, which returns 401/405 once OIDC auth
-is enabled, so orchestrators may report the container unhealthy. Until a
-dedicated health endpoint exists, override or disable the healthcheck, or treat
-process liveness as the signal. Tracked in
-[#64](https://github.com/ivni/imap-mcp/issues/64).
+Two unauthenticated HTTP endpoints support container orchestration (both bypass
+OIDC auth by design, so probes need no credentials):
+
+| Endpoint  | Purpose   | Behaviour |
+| --------- | --------- | --------- |
+| `GET /health` | Liveness  | Returns `200 {"status": "ok"}` whenever the process is serving HTTP. |
+| `GET /ready`  | Readiness | Returns `200 {"status": "ready"}` only when the IMAP server is reachable; `503 {"status": "unavailable"}` otherwise. |
+
+The bundled `HEALTHCHECK` probes `GET /health`. Response bodies never include
+connection details (host, username), so they are safe to expose.
+
+`/ready` opens a short-lived IMAP connection on each call, so keep the probe
+interval modest (e.g. 30s) to avoid excessive logins against the IMAP server.
+Kubernetes example:
+
+```yaml
+livenessProbe:
+  httpGet: { path: /health, port: 8010 }
+  periodSeconds: 30
+readinessProbe:
+  httpGet: { path: /ready, port: 8010 }
+  periodSeconds: 30
+```
 
 ## stdio deployment (single user)
 
@@ -127,8 +145,6 @@ production rollout:
 
 - No socket timeout on IMAP operations — a hung server blocks indefinitely
   ([#62](https://github.com/ivni/imap-mcp/issues/62)).
-- Healthcheck / missing `/health` endpoint
-  ([#64](https://github.com/ivni/imap-mcp/issues/64)).
 - Requests are serialized under load (no real concurrency)
   ([#65](https://github.com/ivni/imap-mcp/issues/65)).
 - OIDC audience not enforced unless `OIDC_AUDIENCE` is set

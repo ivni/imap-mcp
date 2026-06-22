@@ -36,7 +36,9 @@ EXPOSE 8010
 
 USER mcp
 
+# Liveness probe hits the unauthenticated /health endpoint (see server.py).
+# urlopen raises on any non-2xx status, which fails the healthcheck.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8010/mcp')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8010/health')" || exit 1
 
 CMD ["python", "-m", "imap_mcp.server"]
