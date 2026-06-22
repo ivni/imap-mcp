@@ -79,6 +79,11 @@ plus extensive security hardening were added.
 - Explicit TLS context with certificate verification enabled by default (#9).
 - Routine dependency/base-image upgrades to patch CVEs (cryptography, pyjwt,
   requests, `python:3.13-slim`).
+- Upgraded all locked dependencies to clear 32 known CVEs reported by
+  `pip-audit` (pyjwt 2.13.0, cryptography 49.0.0, starlette 1.3.1 via mcp 1.28.0,
+  python-multipart 0.0.32, urllib3 2.7.0, idna 3.18, msgpack 1.2.1,
+  python-dotenv 1.2.2, and dev tools); removed the no-longer-needed pygments
+  `--ignore-vuln` from CI now that pip-audit is clean.
 
 ### Fixed
 
