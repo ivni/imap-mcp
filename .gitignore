@@ -50,6 +50,10 @@ ENV/
 *.swo
 *~
 
+# Backup files
+*.bak
+*.orig
+
 # Mac OS
 .DS_Store
 
