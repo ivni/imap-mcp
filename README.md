@@ -151,6 +151,10 @@ All tools carry [MCP ToolAnnotations](https://modelcontextprotocol.io/specificat
    claude mcp add --transport http imap-mcp http://localhost:8010/mcp
    ```
 
+> For a production deployment guide — environment checklist, TLS/reverse-proxy
+> setup, OIDC configuration, resource sizing, and known operational limitations —
+> see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
 ### Stdio Transport (Claude Desktop)
 
 For local use without Docker, run the server via stdio transport (the default):
