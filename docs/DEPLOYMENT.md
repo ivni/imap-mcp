@@ -127,8 +127,6 @@ production rollout:
 
 - No socket timeout on IMAP operations — a hung server blocks indefinitely
   ([#62](https://github.com/ivni/imap-mcp/issues/62)).
-- No automatic reconnection after a dropped IMAP connection
-  ([#63](https://github.com/ivni/imap-mcp/issues/63)).
 - Healthcheck / missing `/health` endpoint
   ([#64](https://github.com/ivni/imap-mcp/issues/64)).
 - Requests are serialized under load (no real concurrency)

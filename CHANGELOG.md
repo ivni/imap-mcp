@@ -90,6 +90,10 @@ plus extensive security hardening were added.
 
 ### Fixed
 
+- Dead IMAP connections (idle timeout, server restart, transient network blip)
+  now detected via a lightweight `NOOP` probe and transparently reconnected with
+  bounded exponential-backoff retry, instead of leaving `connected = True` over a
+  dead socket and failing every subsequent operation (#63).
 - Multi-folder search pagination dropping results (#41).
 - Environment-variable config overrides silently ignored when a YAML file
   exists (#42).

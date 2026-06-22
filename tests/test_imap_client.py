@@ -5,7 +5,10 @@ from typing import Any, Callable, Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
-from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
+from imapclient.exceptions import (  # type: ignore[import-untyped]
+    IMAPClientAbortError,
+    IMAPClientError,
+)
 
 from imap_mcp.config import ImapConfig
 from imap_mcp.imap_client import _FOLDER_CACHE_TTL_SECONDS, MAX_FETCH_UIDS, ImapClient
@@ -1751,3 +1754,158 @@ class TestFetchLimits:
             fetched_uids = call_args[0][0]
             assert len(fetched_uids) == 10
             assert fetched_uids == small_uid_list
+
+
+class TestReconnection:
+    """Test transparent reconnection after a dropped connection (issue #63)."""
+
+    @staticmethod
+    def _config() -> ImapConfig:
+        return ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+
+    def test_connection_alive_returns_false_when_client_none(self) -> None:
+        """A missing client is reported as a dead connection, not probed."""
+        client = ImapClient(self._config())
+        assert client.client is None
+        assert client._connection_alive() is False
+
+    def test_connection_alive_probes_with_noop(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """_connection_alive() issues a NOOP and reports a live socket."""
+        client = ImapClient(self._config())
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            client.connect()
+
+            assert client._connection_alive() is True
+            mock_imap_client.noop.assert_called_once()
+
+    def test_connection_alive_returns_false_on_dead_socket(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """A NOOP that raises a socket/abort error means the connection is dead."""
+        client = ImapClient(self._config())
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            client.connect()
+
+            mock_imap_client.noop.side_effect = IMAPClientAbortError("EOF")
+            assert client._connection_alive() is False
+
+    def test_ensure_connected_probes_and_keeps_live_connection(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """When already connected and alive, no reconnect happens."""
+        client = ImapClient(self._config())
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            client.connect()
+            mock_client_class.reset_mock()
+            mock_imap_client.login.reset_mock()
+
+            client.ensure_connected()
+
+            # Probed the existing connection, did not build a new one.
+            mock_imap_client.noop.assert_called_once()
+            mock_client_class.assert_not_called()
+            mock_imap_client.login.assert_not_called()
+            assert client.connected is True
+
+    def test_ensure_connected_reconnects_on_dropped_connection(self) -> None:
+        """A dead socket detected via NOOP triggers a transparent reconnect."""
+        client = ImapClient(self._config())
+        dead_client = MagicMock()
+        dead_client.noop.side_effect = OSError("connection reset by peer")
+        fresh_client = MagicMock()
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.side_effect = [dead_client, fresh_client]
+
+            client.connect()  # establishes dead_client
+            assert client.client is dead_client
+
+            client.ensure_connected()  # detects the drop and reconnects
+
+            # A brand-new client was built and logged into.
+            assert mock_client_class.call_count == 2
+            fresh_client.login.assert_called_once_with("test@example.com", "password")
+            assert client.client is fresh_client
+            assert client.connected is True
+            # Selection state from the dead session is cleared.
+            assert client.current_folder is None
+
+    def test_operation_transparently_recovers_after_drop(self) -> None:
+        """Acceptance criterion: an operation succeeds after a connection drop."""
+        client = ImapClient(self._config())
+        dead_client = MagicMock()
+        dead_client.noop.side_effect = IMAPClientAbortError("socket error: EOF")
+        fresh_client = MagicMock()
+        fresh_client.search.return_value = [1, 2, 3]
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.side_effect = [dead_client, fresh_client]
+
+            client.connect()  # establishes dead_client
+            # The server has since dropped the connection; the next operation
+            # must reconnect and complete instead of erroring out.
+            results = client.search("all", folder="INBOX")
+
+            assert results == [1, 2, 3]
+            assert mock_client_class.call_count == 2
+            fresh_client.search.assert_called_once()
+
+    def test_reconnect_retries_with_backoff_then_succeeds(self) -> None:
+        """Reconnect rides out transient failures with bounded exponential backoff."""
+        client = ImapClient(self._config())
+        dead_client = MagicMock()
+        dead_client.noop.side_effect = OSError("dead")
+        fresh_client = MagicMock()
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            # initial connect, two failed reconnect attempts, then success
+            mock_client_class.side_effect = [
+                dead_client,
+                OSError("refused"),
+                OSError("refused"),
+                fresh_client,
+            ]
+            with patch("imap_mcp.imap_client.time.sleep") as mock_sleep:
+                client.connect()
+                client.ensure_connected()
+
+                assert client.client is fresh_client
+                assert client.connected is True
+                # Backoff doubled between the two retries: 0.5s then 1.0s.
+                assert mock_sleep.call_count == 2
+                assert mock_sleep.call_args_list[0].args[0] == 0.5
+                assert mock_sleep.call_args_list[1].args[0] == 1.0
+
+    def test_reconnect_raises_after_max_attempts(self) -> None:
+        """Reconnect gives up with a ConnectionError after exhausting retries."""
+        client = ImapClient(self._config())
+        dead_client = MagicMock()
+        dead_client.noop.side_effect = OSError("dead")
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.side_effect = [
+                dead_client,
+                OSError("refused"),
+                OSError("refused"),
+                OSError("refused"),
+            ]
+            with patch("imap_mcp.imap_client.time.sleep") as mock_sleep:
+                client.connect()
+
+                with pytest.raises(ConnectionError, match="Failed to reconnect"):
+                    client.ensure_connected()
+
+                # Sleeps only between attempts, not after the final failure.
+                assert mock_sleep.call_count == 2
+                assert client.connected is False

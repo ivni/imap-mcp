@@ -4,6 +4,7 @@ import email
 import logging
 import re
 import ssl
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -22,6 +23,11 @@ _MAX_FOLDER_NAME_LENGTH = 255
 MAX_FETCH_UIDS = 500
 MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024  # 25 MB
 _FOLDER_CACHE_TTL_SECONDS = 300  # 5 minutes
+
+# Bounded retry with exponential backoff for transparent reconnection after a
+# dropped connection (idle timeout, server restart, transient network blip).
+_RECONNECT_MAX_ATTEMPTS = 3
+_RECONNECT_BACKOFF_BASE_SECONDS = 0.5  # doubled each retry: 0.5s, 1.0s
 
 
 class ImapClient:
@@ -109,14 +115,78 @@ class ImapClient:
                 self.connected = False
                 logger.info("Disconnected from IMAP server")
 
-    def ensure_connected(self) -> None:
-        """Ensure that we are connected to the IMAP server.
+    def _connection_alive(self) -> bool:
+        """Probe the live connection with a lightweight NOOP.
+
+        A server-side or idle disconnect leaves ``self.connected`` True while
+        the underlying socket is already dead. Issuing a cheap NOOP detects
+        this so the caller can transparently reconnect instead of failing the
+        next real operation.
+
+        Returns:
+            True if the connection responds, False if the socket is dead.
+        """
+        if self.client is None:
+            return False
+        try:
+            self.client.noop()
+            return True
+        except (IMAPClientError, OSError) as e:
+            logger.info("IMAP connection probe failed, will reconnect: %s", e)
+            return False
+
+    def _reconnect(self) -> None:
+        """Tear down a dead connection and establish a fresh one.
+
+        Drops the (presumed dead) client without a doomed logout round-trip,
+        then reconnects with a small bounded retry and exponential backoff to
+        ride out transient network failures.
 
         Raises:
-            ConnectionError: If connection fails
+            ConnectionError: If reconnection fails after all attempts.
+        """
+        # Abandon the dead client; selection state does not survive a new session.
+        self.client = None
+        self.connected = False
+        self.current_folder = None
+
+        last_error: Optional[ConnectionError] = None
+        for attempt in range(1, _RECONNECT_MAX_ATTEMPTS + 1):
+            try:
+                self.connect()
+                return
+            except ConnectionError as e:
+                last_error = e
+                if attempt < _RECONNECT_MAX_ATTEMPTS:
+                    backoff = _RECONNECT_BACKOFF_BASE_SECONDS * (2 ** (attempt - 1))
+                    logger.warning(
+                        "Reconnect attempt %d/%d failed, retrying in %.1fs",
+                        attempt,
+                        _RECONNECT_MAX_ATTEMPTS,
+                        backoff,
+                    )
+                    time.sleep(backoff)
+        raise ConnectionError(
+            f"Failed to reconnect after {_RECONNECT_MAX_ATTEMPTS} attempts: {last_error}"
+        )
+
+    def ensure_connected(self) -> None:
+        """Ensure that we have a live connection to the IMAP server.
+
+        When not connected, connects. When already connected, probes the
+        socket with a lightweight NOOP and transparently reconnects if the
+        connection has dropped (idle timeout, server restart, or a transient
+        network blip) — without this, a dead socket would surface as an error
+        on the next operation instead of recovering.
+
+        Raises:
+            ConnectionError: If connection (or reconnection) fails
         """
         if not self.connected:
             self.connect()
+        elif self.client is not None and not self._connection_alive():
+            logger.info("IMAP connection dropped, reconnecting")
+            self._reconnect()
         if self.client is None:
             raise ConnectionError("Not connected to IMAP server")
 
