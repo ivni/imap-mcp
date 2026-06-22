@@ -65,7 +65,7 @@ def tools(mock_client: Any) -> Any:
         return decorator
 
     mcp.tool = mock_tool_decorator
-    register_tools(mcp, mock_client)
+    register_tools(mcp)
     return stored_tools
 
 
@@ -738,7 +738,7 @@ class TestSearchEmailsFolderEnforcement:
             return decorator
 
         mcp.tool = mock_tool_decorator
-        register_tools(mcp, client)
+        register_tools(mcp)
         return stored_tools, client
 
     @pytest.mark.asyncio
@@ -1109,7 +1109,7 @@ class TestSearchEmailsPagination:
             return decorator
 
         mcp.tool = mock_tool_decorator
-        register_tools(mcp, mock_client)
+        register_tools(mcp)
         return stored_tools
 
     @pytest.fixture

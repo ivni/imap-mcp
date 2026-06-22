@@ -11,7 +11,6 @@ import pytest
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from imap_mcp.imap_client import ImapClient
 from imap_mcp.tools import register_tools
 
 
@@ -29,7 +28,7 @@ def registered_tools() -> dict[str, dict[str, Any]]:
         return decorator
 
     mcp.tool = mock_tool_decorator
-    register_tools(mcp, MagicMock(spec=ImapClient))
+    register_tools(mcp)
     return captured
 
 

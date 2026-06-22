@@ -30,12 +30,14 @@ def get_client_from_context(ctx: Context) -> ImapClient:
     return client  # type: ignore[no-any-return]
 
 
-def register_resources(mcp: FastMCP, imap_client: ImapClient) -> None:
+def register_resources(mcp: FastMCP) -> None:
     """Register MCP resources.
+
+    The connected IMAP client is retrieved per-request from the lifespan
+    context via ``get_client_from_context``.
 
     Args:
         mcp: MCP server
-        imap_client: IMAP client
     """
 
     @mcp.resource(

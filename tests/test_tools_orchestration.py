@@ -91,8 +91,7 @@ class TestMeetingInviteOrchestration:
             return decorator
 
         mcp.tool = mock_tool_decorator
-        imap_client = MagicMock()
-        register_tools(mcp, imap_client)
+        register_tools(mcp)
         return stored_tools
 
     @pytest.mark.asyncio

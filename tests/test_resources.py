@@ -99,7 +99,7 @@ class TestResources:
     def test_register_resources(self, mock_mcp: Any, mock_imap_client: Any) -> None:
         """Test registration of MCP resources."""
         # Call register_resources
-        register_resources(mock_mcp, mock_imap_client)
+        register_resources(mock_mcp)
 
         # Check that the expected resources were registered
         assert "email://folders" in mock_mcp.resources
@@ -113,7 +113,7 @@ class TestResources:
     ) -> None:
         """Test get_folders resource."""
         # Register resources
-        register_resources(mock_mcp, mock_imap_client)
+        register_resources(mock_mcp)
 
         # Get the function and call it
         get_folders = mock_mcp.resources["email://folders"]
@@ -134,7 +134,7 @@ class TestResources:
     ) -> None:
         """Test list_emails resource."""
         # Register resources
-        register_resources(mock_mcp, mock_imap_client)
+        register_resources(mock_mcp)
 
         # Get the function and call it
         list_emails = mock_mcp.resources["email://{folder}/list"]
@@ -156,7 +156,7 @@ class TestResources:
     ) -> None:
         """Test search_emails resource."""
         # Register resources
-        register_resources(mock_mcp, mock_imap_client)
+        register_resources(mock_mcp)
 
         # Customize search to only return results from a single folder
         def mock_search(query: Any, folder: Optional[str] = None) -> Any:
@@ -193,7 +193,7 @@ class TestResources:
     ) -> None:
         """Test get_email resource."""
         # Register resources
-        register_resources(mock_mcp, mock_imap_client)
+        register_resources(mock_mcp)
 
         # Create a mock email with the needed properties for text output
         email = mock.MagicMock()
@@ -230,7 +230,7 @@ class TestResources:
     ) -> None:
         """Test error handling in resources."""
         # Register resources
-        register_resources(mock_mcp, mock_imap_client)
+        register_resources(mock_mcp)
 
         # Setup client to raise exception
         mock_imap_client.fetch_email.side_effect = IMAPClientError("Test error")
@@ -249,7 +249,7 @@ class TestResources:
         self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any
     ) -> None:
         """Test error handling in list_emails resource."""
-        register_resources(mock_mcp, mock_imap_client)
+        register_resources(mock_mcp)
 
         mock_imap_client.search.side_effect = IMAPClientError("IMAP error")
 
@@ -262,7 +262,7 @@ class TestResources:
         self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any
     ) -> None:
         """Test error handling in search_emails resource."""
-        register_resources(mock_mcp, mock_imap_client)
+        register_resources(mock_mcp)
 
         mock_imap_client.search.side_effect = IMAPClientError("Search error")
 
@@ -276,7 +276,7 @@ class TestResources:
         self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any
     ) -> None:
         """Test that unexpected exceptions hit the catch-all branch."""
-        register_resources(mock_mcp, mock_imap_client)
+        register_resources(mock_mcp)
 
         # RuntimeError is not in (IMAPClientError, OSError, ValueError)
         mock_imap_client.fetch_email.side_effect = RuntimeError("unexpected")
@@ -296,7 +296,7 @@ class TestResources:
         self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any
     ) -> None:
         """Test get_email with non-numeric UID returns user-friendly error."""
-        register_resources(mock_mcp, mock_imap_client)
+        register_resources(mock_mcp)
 
         get_email = mock_mcp.resources["email://{folder}/{uid}"]
         result = await get_email("INBOX", "not-a-number")
@@ -310,7 +310,7 @@ class TestResources:
         self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any
     ) -> None:
         """Test get_email with UID=0 returns user-friendly error."""
-        register_resources(mock_mcp, mock_imap_client)
+        register_resources(mock_mcp)
 
         get_email = mock_mcp.resources["email://{folder}/{uid}"]
         result = await get_email("INBOX", "0")
@@ -324,7 +324,7 @@ class TestResources:
         self, mock_mcp: Any, mock_imap_client: Any, mock_context: Any
     ) -> None:
         """Test get_email with negative UID returns user-friendly error."""
-        register_resources(mock_mcp, mock_imap_client)
+        register_resources(mock_mcp)
 
         get_email = mock_mcp.resources["email://{folder}/{uid}"]
         result = await get_email("INBOX", "-5")
@@ -356,7 +356,7 @@ class TestResources:
             # This should succeed if all resources have correct parameter definitions
             from imap_mcp.resources import register_resources
 
-            register_resources(real_mcp, mock.MagicMock())
+            register_resources(real_mcp)
 
             # If we get here, all resources passed validation
             assert len(real_resources) >= 4, (

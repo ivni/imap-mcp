@@ -152,12 +152,10 @@ def create_server(
     # Store config for access in the lifespan
     server._config = config  # type: ignore[attr-defined]
 
-    # Create IMAP client for setup (will be recreated in lifespan)
-    imap_client = ImapClient(config.imap, config.allowed_folders)
-
-    # Register resources and tools
-    register_resources(server, imap_client)
-    register_tools(server, imap_client)
+    # Register resources and tools. The connected IMAP client is supplied
+    # per-request from the lifespan context (see server_lifespan).
+    register_resources(server)
+    register_tools(server)
 
     # Add server status tool
     @server.tool(

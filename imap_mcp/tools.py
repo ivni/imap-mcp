@@ -127,12 +127,14 @@ async def require_confirmation(
     return ConfirmationResult.DECLINED
 
 
-def register_tools(mcp: FastMCP, imap_client: ImapClient) -> None:
+def register_tools(mcp: FastMCP) -> None:
     """Register MCP tools.
+
+    The connected IMAP client is retrieved per-request from the lifespan
+    context via ``get_client_from_context``.
 
     Args:
         mcp: MCP server
-        imap_client: IMAP client
     """
 
     # Using decorator pattern to register tools

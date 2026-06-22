@@ -48,7 +48,7 @@ class TestToolsReply:
 
         mcp.tool = mock_tool_decorator
         imap_client = MagicMock()
-        register_tools(mcp, imap_client)
+        register_tools(mcp)
         return stored_tools, imap_client
 
     @pytest.fixture
