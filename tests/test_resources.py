@@ -282,12 +282,12 @@ class TestResources:
         mock_imap_client.fetch_email.side_effect = RuntimeError("unexpected")
         get_email = mock_mcp.resources["email://{folder}/{uid}"]
         result = await get_email("INBOX", "101")
-        assert result == "Error: an unexpected error occurred"
+        assert result == "Error: an unexpected error occurred (RuntimeError)"
 
         mock_imap_client.search.side_effect = RuntimeError("unexpected")
         list_emails = mock_mcp.resources["email://{folder}/list"]
         result = await list_emails("INBOX")
-        assert result == "Error: an unexpected error occurred"
+        assert result == "Error: an unexpected error occurred (RuntimeError)"
 
     # --- UID validation tests (issue #12) ---
 

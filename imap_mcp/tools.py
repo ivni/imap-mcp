@@ -391,9 +391,9 @@ def register_tools(mcp: FastMCP) -> None:
             except (IMAPClientError, OSError, ValueError) as e:
                 logger.error(f"Error moving email: {e}")
                 return f"Error: {e}"
-            except Exception:
+            except Exception as e:
                 logger.error("Unexpected error moving email", exc_info=True)
-                return "Error: an unexpected error occurred"
+                return f"Error: an unexpected error occurred ({type(e).__name__})"
 
         # Offload blocking IMAP work to a worker thread so the event loop
         # (and thus other concurrent sessions) is not blocked (issue #65).
@@ -440,9 +440,9 @@ def register_tools(mcp: FastMCP) -> None:
             except (IMAPClientError, OSError, ValueError) as e:
                 logger.error(f"Error marking email as read: {e}")
                 return f"Error: {e}"
-            except Exception:
+            except Exception as e:
                 logger.error("Unexpected error marking email as read", exc_info=True)
-                return "Error: an unexpected error occurred"
+                return f"Error: an unexpected error occurred ({type(e).__name__})"
 
         return await anyio.to_thread.run_sync(_do_mark_read)
 
@@ -487,9 +487,9 @@ def register_tools(mcp: FastMCP) -> None:
             except (IMAPClientError, OSError, ValueError) as e:
                 logger.error(f"Error marking email as unread: {e}")
                 return f"Error: {e}"
-            except Exception:
+            except Exception as e:
                 logger.error("Unexpected error marking email as unread", exc_info=True)
-                return "Error: an unexpected error occurred"
+                return f"Error: an unexpected error occurred ({type(e).__name__})"
 
         return await anyio.to_thread.run_sync(_do_mark_unread)
 
@@ -536,9 +536,9 @@ def register_tools(mcp: FastMCP) -> None:
             except (IMAPClientError, OSError, ValueError) as e:
                 logger.error(f"Error flagging email: {e}")
                 return f"Error: {e}"
-            except Exception:
+            except Exception as e:
                 logger.error("Unexpected error flagging email", exc_info=True)
-                return "Error: an unexpected error occurred"
+                return f"Error: an unexpected error occurred ({type(e).__name__})"
 
         return await anyio.to_thread.run_sync(_do_flag)
 
@@ -590,9 +590,9 @@ def register_tools(mcp: FastMCP) -> None:
             except (IMAPClientError, OSError, ValueError) as e:
                 logger.error(f"Error deleting email: {e}")
                 return f"Error: {e}"
-            except Exception:
+            except Exception as e:
                 logger.error("Unexpected error deleting email", exc_info=True)
-                return "Error: an unexpected error occurred"
+                return f"Error: an unexpected error occurred ({type(e).__name__})"
 
         return await anyio.to_thread.run_sync(_do_delete)
 
@@ -838,9 +838,9 @@ def register_tools(mcp: FastMCP) -> None:
             except (IMAPClientError, OSError, ValueError) as e:
                 logger.error(f"Error processing email: {e}")
                 return f"Error: {e}"
-            except Exception:
+            except Exception as e:
                 logger.error("Unexpected error processing email", exc_info=True)
-                return "Error: an unexpected error occurred"
+                return f"Error: an unexpected error occurred ({type(e).__name__})"
 
         return await anyio.to_thread.run_sync(_do_process)
 
@@ -1019,11 +1019,13 @@ def register_tools(mcp: FastMCP) -> None:
             except (IMAPClientError, OSError, ValueError) as e:
                 logger.error(f"Error processing meeting invite: {e}")
                 result["message"] = f"Error: {e}"
-            except Exception:
+            except Exception as e:
                 logger.error(
                     "Unexpected error processing meeting invite", exc_info=True
                 )
-                result["message"] = "Error: an unexpected error occurred"
+                result["message"] = (
+                    f"Error: an unexpected error occurred ({type(e).__name__})"
+                )
 
             return result
 

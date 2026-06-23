@@ -381,15 +381,15 @@ class TestTools:
         # RuntimeError is not in (IMAPClientError, OSError, ValueError)
         mock_client.move_email.side_effect = RuntimeError("unexpected")
         result = await move_email("INBOX", 123, "Archive", mock_context)
-        assert result == "Error: an unexpected error occurred"
+        assert result == "Error: an unexpected error occurred (RuntimeError)"
 
         mock_client.mark_email.side_effect = RuntimeError("unexpected")
         result = await mark_as_read("INBOX", 123, mock_context)
-        assert result == "Error: an unexpected error occurred"
+        assert result == "Error: an unexpected error occurred (RuntimeError)"
 
         mock_client.delete_email.side_effect = RuntimeError("unexpected")
         result = await delete_email("INBOX", 123, mock_context)
-        assert result == "Error: an unexpected error occurred"
+        assert result == "Error: an unexpected error occurred (RuntimeError)"
 
         mock_client.search.side_effect = RuntimeError("unexpected")
         result = await search_emails("test", mock_context)

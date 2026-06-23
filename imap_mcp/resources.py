@@ -116,9 +116,9 @@ def register_resources(mcp: FastMCP) -> None:
             except (IMAPClientError, OSError, ValueError) as e:
                 logger.error(f"Error listing emails: {e}")
                 return f"Error: {e}"
-            except Exception:
+            except Exception as e:
                 logger.error("Unexpected error listing emails", exc_info=True)
-                return "Error: an unexpected error occurred"
+                return f"Error: an unexpected error occurred ({type(e).__name__})"
 
         return await anyio.to_thread.run_sync(_do_list)
 
@@ -272,8 +272,8 @@ def register_resources(mcp: FastMCP) -> None:
             except (IMAPClientError, OSError, ValueError) as e:
                 logger.error(f"Error fetching email: {e}")
                 return f"Error: {e}"
-            except Exception:
+            except Exception as e:
                 logger.error("Unexpected error fetching email", exc_info=True)
-                return "Error: an unexpected error occurred"
+                return f"Error: an unexpected error occurred ({type(e).__name__})"
 
         return await anyio.to_thread.run_sync(_do_get_email)
