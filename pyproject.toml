@@ -28,6 +28,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "pyjwt[crypto]>=2.8.0",
     "nh3>=0.3.0",
+    "prometheus-client>=0.21.0",
 ]
 
 [project.optional-dependencies]

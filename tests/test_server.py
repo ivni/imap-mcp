@@ -1,7 +1,6 @@
 """Tests for the server module."""
 
 import argparse
-import logging
 import subprocess
 import sys
 from contextlib import AsyncExitStack
@@ -56,7 +55,11 @@ class TestServer:
                     assert mock_register_tools.called
 
     def test_create_server_with_debug(self) -> None:
-        """Test server creation with debug mode enabled."""
+        """create_server(debug=True) succeeds without touching the logger level.
+
+        Logging (including the debug level) is owned by configure_logging(),
+        called once in main(); create_server must not configure it again.
+        """
         mock_config = ServerConfig(
             imap=ImapConfig(
                 host="imap.example.com",
@@ -68,8 +71,9 @@ class TestServer:
         )
         with mock.patch("imap_mcp.server.load_config", return_value=mock_config):
             with mock.patch("imap_mcp.server.logger") as mock_logger:
-                create_server(debug=True)
-                mock_logger.setLevel.assert_called_with(logging.DEBUG)
+                server = create_server(debug=True)
+                assert server is not None
+                mock_logger.setLevel.assert_not_called()
 
     def test_create_server_with_config_path(self) -> None:
         """Test server creation with a specific config path."""
@@ -313,24 +317,27 @@ class TestServer:
                     mock_create_server.return_value = mock_server
 
                     # Call main
-                    with mock.patch("imap_mcp.server.logger") as mock_logger:
-                        main()
+                    with mock.patch(
+                        "imap_mcp.server.configure_logging"
+                    ) as mock_configure_logging:
+                        with mock.patch("imap_mcp.server.logger") as mock_logger:
+                            main()
 
-                        # Verify create_server was called with correct args
-                        mock_create_server.assert_called_once_with(
-                            "test_config.yaml", True, "stdio", "127.0.0.1", 8010
-                        )
+                            # Verify create_server was called with correct args
+                            mock_create_server.assert_called_once_with(
+                                "test_config.yaml", True, "stdio", "127.0.0.1", 8010
+                            )
 
-                        # Verify server.run was called with transport
-                        mock_server.run.assert_called_once_with(transport="stdio")
+                            # Verify server.run was called with transport
+                            mock_server.run.assert_called_once_with(transport="stdio")
 
-                        # Verify debug mode was set
-                        mock_logger.setLevel.assert_called_with(logging.DEBUG)
+                            # Verify logging was configured with debug enabled
+                            mock_configure_logging.assert_called_once_with(debug=True)
 
-                        # Verify startup message
-                        mock_logger.info.assert_called_with(mock.ANY)
-                        call_args = mock_logger.info.call_args[0][0]
-                        assert "Starting server in development mode" in call_args
+                            # Verify startup message
+                            mock_logger.info.assert_called_with(mock.ANY)
+                            call_args = mock_logger.info.call_args[0][0]
+                            assert "Starting server in development mode" in call_args
 
     def test_main_env_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test main function with config from environment variable."""
@@ -359,7 +366,8 @@ class TestServer:
                     mock_create_server.return_value = mock_server
 
                     # Call main
-                    main()
+                    with mock.patch("imap_mcp.server.configure_logging"):
+                        main()
 
                     # Verify create_server was called with correct args
                     mock_create_server.assert_called_once_with(
@@ -386,12 +394,17 @@ class TestServer:
                 mock_server = mock.MagicMock()
                 mock_create_server.return_value = mock_server
 
-                main()
+                with mock.patch("imap_mcp.server.configure_logging"):
+                    with mock.patch("imap_mcp.server._run_http") as mock_run_http:
+                        main()
 
                 mock_create_server.assert_called_once_with(
                     None, False, "streamable-http", "0.0.0.0", 8010
                 )
-                mock_server.run.assert_called_once_with(transport="streamable-http")
+                # HTTP transport is served via uvicorn (with middleware), not
+                # server.run, so the observability middleware can wrap the app.
+                mock_run_http.assert_called_once_with(mock_server, "0.0.0.0", 8010)
+                mock_server.run.assert_not_called()
 
     def test_main_transport_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that transport settings are read from environment variables."""
@@ -404,12 +417,15 @@ class TestServer:
                 mock_server = mock.MagicMock()
                 mock_create_server.return_value = mock_server
 
-                main()
+                with mock.patch("imap_mcp.server.configure_logging"):
+                    with mock.patch("imap_mcp.server._run_http") as mock_run_http:
+                        main()
 
                 mock_create_server.assert_called_once_with(
                     None, False, "streamable-http", "0.0.0.0", 9000
                 )
-                mock_server.run.assert_called_once_with(transport="streamable-http")
+                mock_run_http.assert_called_once_with(mock_server, "0.0.0.0", 9000)
+                mock_server.run.assert_not_called()
 
     def test_create_server_with_http_transport(
         self, monkeypatch: pytest.MonkeyPatch
@@ -419,6 +435,7 @@ class TestServer:
             "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
         )
         monkeypatch.setenv("OIDC_JWKS_URI", "https://auth.example.com/jwks/")
+        monkeypatch.setenv("OIDC_AUDIENCE", "my-mcp-server")
 
         mock_config = ServerConfig(
             imap=ImapConfig(
@@ -581,6 +598,7 @@ class TestServerOIDCAuth:
         monkeypatch.setenv(
             "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
         )
+        monkeypatch.setenv("OIDC_AUDIENCE", "my-mcp-server")
         monkeypatch.delenv("OIDC_JWKS_URI", raising=False)
 
         with mock.patch(
@@ -613,6 +631,7 @@ class TestServerOIDCAuth:
         monkeypatch.setenv(
             "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
         )
+        monkeypatch.setenv("OIDC_AUDIENCE", "my-mcp-server")
         monkeypatch.delenv("OIDC_JWKS_URI", raising=False)
 
         with mock.patch(
@@ -632,6 +651,7 @@ class TestServerOIDCAuth:
         monkeypatch.setenv(
             "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
         )
+        monkeypatch.setenv("OIDC_AUDIENCE", "my-mcp-server")
         monkeypatch.setenv("OIDC_JWKS_URI", "https://auth.example.com/custom/jwks/")
 
         with mock.patch(
@@ -660,6 +680,7 @@ class TestServerOIDCAuth:
         monkeypatch.setenv(
             "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
         )
+        monkeypatch.setenv("OIDC_AUDIENCE", "my-mcp-server")
         monkeypatch.setenv("MCP_RESOURCE_SERVER_URL", "https://mcp.example.com/mcp")
         monkeypatch.delenv("OIDC_JWKS_URI", raising=False)
 
@@ -683,3 +704,74 @@ class TestServerOIDCAuth:
                         str(auth_settings.issuer_url)
                         == "https://auth.example.com/application/o/test/"
                     )
+
+    def test_missing_audience_raises_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """HTTP transport refuses to start without OIDC_AUDIENCE."""
+        monkeypatch.setenv(
+            "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
+        )
+        monkeypatch.delenv("OIDC_AUDIENCE", raising=False)
+        monkeypatch.delenv("OIDC_ALLOW_ANY_AUDIENCE", raising=False)
+
+        with mock.patch(
+            "imap_mcp.server.load_config", return_value=self._mock_config()
+        ):
+            # Should fail fast on config, before any JWKS discovery network call.
+            with mock.patch("imap_mcp.auth.discover_jwks_uri") as mock_discover:
+                with pytest.raises(ValueError, match="OIDC_AUDIENCE is required"):
+                    create_server(transport="streamable-http")
+                mock_discover.assert_not_called()
+
+    def test_empty_audience_raises_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An empty OIDC_AUDIENCE is treated as unset and refused."""
+        monkeypatch.setenv(
+            "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
+        )
+        monkeypatch.setenv("OIDC_AUDIENCE", "")
+        monkeypatch.delenv("OIDC_ALLOW_ANY_AUDIENCE", raising=False)
+
+        with mock.patch(
+            "imap_mcp.server.load_config", return_value=self._mock_config()
+        ):
+            with pytest.raises(ValueError, match="OIDC_AUDIENCE is required"):
+                create_server(transport="streamable-http")
+
+    def test_allow_any_audience_opt_out_starts(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OIDC_ALLOW_ANY_AUDIENCE=true permits startup and warns; audience unset."""
+        monkeypatch.setenv(
+            "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
+        )
+        monkeypatch.delenv("OIDC_AUDIENCE", raising=False)
+        monkeypatch.setenv("OIDC_ALLOW_ANY_AUDIENCE", "true")
+        monkeypatch.setenv("OIDC_JWKS_URI", "https://auth.example.com/jwks/")
+
+        with mock.patch(
+            "imap_mcp.server.load_config", return_value=self._mock_config()
+        ):
+            with mock.patch("imap_mcp.server.logger") as mock_logger:
+                server = create_server(transport="streamable-http")
+                assert server._token_verifier is not None
+                assert server._token_verifier._audience is None
+                # Operator is warned that audience is not verified.
+                warnings = " ".join(
+                    str(c.args[0]) for c in mock_logger.warning.call_args_list
+                )
+                assert "audience will NOT be verified" in warnings
+
+    def test_audience_passed_to_verifier(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """OIDC_AUDIENCE is forwarded to the verifier so 'aud' is enforced."""
+        monkeypatch.setenv(
+            "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
+        )
+        monkeypatch.setenv("OIDC_AUDIENCE", "my-mcp-server")
+        monkeypatch.setenv("OIDC_JWKS_URI", "https://auth.example.com/jwks/")
+
+        with mock.patch(
+            "imap_mcp.server.load_config", return_value=self._mock_config()
+        ):
+            server = create_server(transport="streamable-http")
+            assert server._token_verifier._audience == "my-mcp-server"

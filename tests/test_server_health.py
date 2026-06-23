@@ -47,6 +47,7 @@ class TestHealthEndpoint:
         monkeypatch.setenv(
             "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
         )
+        monkeypatch.setenv("OIDC_AUDIENCE", "my-mcp-server")
         monkeypatch.setenv("OIDC_JWKS_URI", "https://auth.example.com/jwks/")
 
         with mock.patch("imap_mcp.server.load_config", return_value=_mock_config()):
@@ -70,6 +71,21 @@ class TestReadyEndpoint:
                 resp = client.get("/ready")
         assert resp.status_code == 200
         assert resp.json() == {"status": "ready"}
+        mock_verify.assert_called_once()
+
+    def test_ready_caches_result_within_ttl(self, http_app: Starlette) -> None:
+        """Repeated probes within the TTL reuse the cached result.
+
+        Guards the unauthenticated endpoint against being used to force an IMAP
+        login on every request (rate-limit / lockout risk).
+        """
+        with mock.patch("imap_mcp.server._verify_imap_reachable") as mock_verify:
+            with TestClient(http_app) as client:
+                first = client.get("/ready")
+                second = client.get("/ready")
+        assert first.status_code == 200
+        assert second.status_code == 200
+        # The second call was served from cache, not a fresh IMAP connection.
         mock_verify.assert_called_once()
 
     def test_ready_returns_503_when_imap_unreachable(self, http_app: Starlette) -> None:

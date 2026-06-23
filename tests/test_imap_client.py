@@ -1809,6 +1809,8 @@ class TestReconnection:
             client.connect()
             mock_client_class.reset_mock()
             mock_imap_client.login.reset_mock()
+            # Simulate an idle connection so the liveness probe fires.
+            client._last_activity = None
 
             client.ensure_connected()
 
@@ -1816,6 +1818,25 @@ class TestReconnection:
             mock_imap_client.noop.assert_called_once()
             mock_client_class.assert_not_called()
             mock_imap_client.login.assert_not_called()
+            assert client.connected is True
+
+    def test_ensure_connected_skips_probe_when_recently_active(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """A connection used within the probe interval is assumed alive.
+
+        Probing on every call would double round-trips on a busy connection;
+        the liveness NOOP only runs after an idle gap (see ``_should_probe``).
+        """
+        client = ImapClient(self._config())
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            client.connect()  # records activity "now"
+            mock_imap_client.noop.reset_mock()
+
+            client.ensure_connected()  # recent activity -> no probe
+
+            mock_imap_client.noop.assert_not_called()
             assert client.connected is True
 
     def test_ensure_connected_reconnects_on_dropped_connection(self) -> None:
@@ -1830,6 +1851,8 @@ class TestReconnection:
 
             client.connect()  # establishes dead_client
             assert client.client is dead_client
+            # Simulate an idle connection so the liveness probe fires.
+            client._last_activity = None
 
             client.ensure_connected()  # detects the drop and reconnects
 
@@ -1855,6 +1878,7 @@ class TestReconnection:
             client.connect()  # establishes dead_client
             # The server has since dropped the connection; the next operation
             # must reconnect and complete instead of erroring out.
+            client._last_activity = None  # simulate idle so the probe fires
             results = client.search("all", folder="INBOX")
 
             assert results == [1, 2, 3]
@@ -1878,6 +1902,7 @@ class TestReconnection:
             ]
             with patch("imap_mcp.imap_client.time.sleep") as mock_sleep:
                 client.connect()
+                client._last_activity = None  # simulate idle so the probe fires
                 client.ensure_connected()
 
                 assert client.client is fresh_client
@@ -1902,6 +1927,7 @@ class TestReconnection:
             ]
             with patch("imap_mcp.imap_client.time.sleep") as mock_sleep:
                 client.connect()
+                client._last_activity = None  # simulate idle so the probe fires
 
                 with pytest.raises(ConnectionError, match="Failed to reconnect"):
                     client.ensure_connected()

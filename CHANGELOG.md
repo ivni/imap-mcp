@@ -44,7 +44,16 @@ plus extensive security hardening were added.
 - Unauthenticated `GET /health` (liveness) and `GET /ready` (readiness, verifies
   IMAP reachability) HTTP endpoints for container orchestrators; the Docker
   `HEALTHCHECK` now probes `/health` instead of the auth-gated `/mcp`, which had
-  reported healthy containers as permanently unhealthy (#64).
+  reported healthy containers as permanently unhealthy (#64). The `/ready`
+  result is cached for a few seconds (concurrent probes coalesced) so the
+  unauthenticated endpoint cannot be used to force an IMAP login per request.
+- Production observability: opt-in JSON structured logging
+  (`IMAP_MCP_LOG_FORMAT=json`), per-request correlation IDs propagated through
+  handlers and worker threads (inbound `X-Request-ID` reused, else generated,
+  and echoed in the response), and an unauthenticated Prometheus `GET /metrics`
+  endpoint exposing request counts/latencies and IMAP session state. No email
+  content, subjects, addresses, or credentials are logged or exported in any
+  format (#67).
 - Multi-stage Docker build with a non-root user, base images pinned by digest,
   and container resource limits (#29); standalone and Traefik compose files.
 - GitHub Actions CI: lockfile hash verification, dependency audit (`pip-audit`),
@@ -55,6 +64,12 @@ plus extensive security hardening were added.
 
 ### Changed
 
+- Blocking `imapclient` calls in async tool/resource handlers (and the
+  per-session connect/disconnect) now run off the event loop via
+  `anyio.to_thread.run_sync`, so a slow IMAP operation no longer head-of-line
+  blocks other HTTP sessions. The shared per-session connection is guarded by a
+  re-entrant lock (`ImapClient` is now thread-safe) so offloaded work cannot
+  interleave commands on the single socket (#65).
 - Migrated dependency management fully to `uv`; dependencies pinned by hash in
   `uv.lock` and installed with `--frozen` in CI and Docker.
 - Replaced broad `except Exception` handlers with specific exceptions in core
@@ -81,6 +96,11 @@ plus extensive security hardening were added.
   HTML in replies (#52).
 - OIDC issuer URL must be HTTPS (#18); JWKS discovery failure is fatal (no
   guessed fallback URI) (#14).
+- `OIDC_AUDIENCE` is now required for the `streamable-http` transport — the
+  server refuses to start without it, binding tokens to this server's `aud`
+  claim so a token the issuer minted for another resource server cannot be
+  replayed here (token passthrough / confused-deputy). `OIDC_ALLOW_ANY_AUDIENCE=true`
+  is a documented, logged opt-out that disables audience verification (#66).
 - UID validation on all tool and resource handlers (#12); email address format
   validation (#16).
 - Explicit TLS context with certificate verification enabled by default (#9).
@@ -97,7 +117,9 @@ plus extensive security hardening were added.
 - Dead IMAP connections (idle timeout, server restart, transient network blip)
   now detected via a lightweight `NOOP` probe and transparently reconnected with
   bounded exponential-backoff retry, instead of leaving `connected = True` over a
-  dead socket and failing every subsequent operation (#63).
+  dead socket and failing every subsequent operation (#63). The probe is skipped
+  when the socket was used within the last 30s, so it adds no round-trip on an
+  actively used connection.
 - Multi-folder search pagination dropping results (#41).
 - Environment-variable config overrides silently ignored when a YAML file
   exists (#42).

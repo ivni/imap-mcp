@@ -11,11 +11,12 @@ overview and the full environment-variable reference, see the
 | **Single user, local** | `stdio` | OS process isolation | Claude Desktop / Claude Code on one machine |
 | **Shared service** | `streamable-http` | OIDC JWT (required) | A server reachable by one or more clients over the network |
 
-> **Concurrency note.** IMAP operations are synchronous and block the event
-> loop, so the HTTP server effectively serializes requests; a slow IMAP
-> operation stalls all in-flight sessions. This is fine for single-user or
-> low-concurrency use but is a throughput ceiling for many simultaneous users
-> (see [#65](https://github.com/ivni/imap-mcp/issues/65)).
+> **Concurrency note.** Blocking IMAP operations run off the event loop in a
+> worker thread pool, so a slow IMAP call no longer stalls other in-flight
+> sessions. Each MCP session has its own IMAP connection, and access to that
+> single socket is serialized by a per-session lock — so requests *within* one
+> session still run one at a time, but separate sessions run concurrently
+> ([#65](https://github.com/ivni/imap-mcp/issues/65)).
 
 ## Prerequisites
 
@@ -41,12 +42,14 @@ via `env_file:`.
 | `IMAP_ALLOWED_FOLDERS` | explicit whitelist | Least privilege; defaults to INBOX-only if unset. |
 | `MCP_TRANSPORT` | `streamable-http` | Network service. |
 | `OIDC_ISSUER_URL` | required (HTTP) | Token issuer; must be HTTPS. |
-| `OIDC_AUDIENCE` | **set it** | Binds tokens to this server. Strongly recommended — without it the audience claim is not verified ([#66](https://github.com/ivni/imap-mcp/issues/66)). |
+| `OIDC_AUDIENCE` | required (HTTP) | Binds tokens to this server (the `aud` claim). HTTP transport refuses to start without it; prevents tokens minted for other resource servers of the same issuer from being replayed here. |
+| `OIDC_ALLOW_ANY_AUDIENCE` | unset / `false` | Opt-out of the `OIDC_AUDIENCE` requirement. Never enable in production — disables audience verification. |
 | `MCP_RESOURCE_SERVER_URL` | public `https://…/mcp` | Advertised in OAuth metadata; set to the public HTTPS URL. |
 | `OIDC_ALLOW_HTTP` | unset / `false` | Never enable in production. |
 | `IMAP_MCP_LOAD_DOTENV` | unset | Keep `.env` auto-loading off on servers; pass env vars directly. |
 | `IMAP_MCP_SKIP_CONFIRMATION` | unset | Only for trusted CI/automation — never with a user-facing AI. |
 | `IMAP_TLS_CA_BUNDLE` | optional | Path to a custom CA bundle for internal CAs. |
+| `IMAP_MCP_LOG_FORMAT` | `json` (recommended) | `json` emits one structured log object per line for ingestion by ELK/Datadog/Loki; defaults to plaintext `text`. |
 
 ## Docker deployment
 
@@ -94,9 +97,12 @@ OIDC auth by design, so probes need no credentials):
 The bundled `HEALTHCHECK` probes `GET /health`. Response bodies never include
 connection details (host, username), so they are safe to expose.
 
-`/ready` opens a short-lived IMAP connection on each call, so keep the probe
-interval modest (e.g. 30s) to avoid excessive logins against the IMAP server.
-Kubernetes example:
+`/ready` opens a short-lived IMAP connection to verify reachability, but the
+result is cached for a few seconds and concurrent probes are coalesced, so a
+burst of requests cannot force a login on every call (rate-limit / lockout
+protection for the unauthenticated endpoint). It still bypasses OIDC, so keep
+it — like `/metrics` — on the monitoring network rather than exposing it
+publicly. Kubernetes example:
 
 ```yaml
 livenessProbe:
@@ -106,6 +112,47 @@ readinessProbe:
   httpGet: { path: /ready, port: 8010 }
   periodSeconds: 30
 ```
+
+## Observability
+
+**Structured logging.** Set `IMAP_MCP_LOG_FORMAT=json` to emit one JSON object
+per line (fields: `timestamp`, `level`, `logger`, `message`, optional
+`correlation_id`, optional `exception`). The default `text` format stays
+human-readable. Email content, subjects, addresses, and credentials are never
+logged in either format.
+
+**Correlation IDs.** On HTTP transport each request is tagged with a correlation
+ID — taken from an inbound `X-Request-ID` header when present (so an upstream
+proxy's ID flows through end-to-end), otherwise generated. It is echoed in the
+`X-Request-ID` response header and attached to every log line produced while
+handling the request, including the offloaded IMAP work.
+
+**Metrics.** A third unauthenticated endpoint, `GET /metrics`, exposes Prometheus
+metrics (it bypasses OIDC like the health probes — keep it on the monitoring
+network):
+
+| Metric | Type | Meaning |
+| ------ | ---- | ------- |
+| `imap_mcp_http_requests_total{method,path,status}` | counter | HTTP requests handled. `path` is normalized to a known-route allowlist (others → `other`) to bound cardinality. |
+| `imap_mcp_http_request_duration_seconds{method,path}` | histogram | Request latency. |
+| `imap_mcp_active_sessions` | gauge | MCP sessions currently holding a live IMAP connection. |
+| `imap_mcp_session_connections_total` | counter | Sessions that established an IMAP connection. |
+| `imap_mcp_session_connection_errors_total` | counter | Sessions that failed to connect at startup. |
+
+```yaml
+# Prometheus scrape config
+scrape_configs:
+  - job_name: imap-mcp
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["imap-mcp:8010"]
+```
+
+Metrics live in the process's own registry, so run the HTTP server as a single
+uvicorn worker (the default). Scaling to multiple workers would give each its
+own counters and `imap_mcp_active_sessions`, and a scrape would see only the
+worker that answered it — scale by running multiple containers (each scraped
+separately) instead, or wire up `prometheus_client`'s multiprocess mode.
 
 ## stdio deployment (single user)
 
@@ -124,7 +171,7 @@ process isolation, so only run it on a trusted machine.
 - [ ] `IMAP_ALLOWED_FOLDERS` restricted to the folders actually needed.
 - [ ] HTTP transport sits behind TLS; `OIDC_ISSUER_URL` and `MCP_RESOURCE_SERVER_URL` are HTTPS.
 - [ ] `OIDC_AUDIENCE` set and verified.
-- [ ] `OIDC_ALLOW_HTTP`, `IMAP_MCP_SKIP_CONFIRMATION`, and `IMAP_MCP_LOAD_DOTENV` are **not** enabled.
+- [ ] `OIDC_ALLOW_ANY_AUDIENCE`, `OIDC_ALLOW_HTTP`, `IMAP_MCP_SKIP_CONFIRMATION`, and `IMAP_MCP_LOAD_DOTENV` are **not** enabled.
 - [ ] Image scanned (CI runs Trivy) and dependencies audited (`uv run pip-audit`).
 
 ## Upgrading
@@ -143,11 +190,6 @@ rollback is simply redeploying the previous image tag.
 These are tracked as issues and are worth understanding before a high-traffic
 production rollout:
 
-- No socket timeout on IMAP operations — a hung server blocks indefinitely
-  ([#62](https://github.com/ivni/imap-mcp/issues/62)).
-- Requests are serialized under load (no real concurrency)
-  ([#65](https://github.com/ivni/imap-mcp/issues/65)).
-- OIDC audience not enforced unless `OIDC_AUDIENCE` is set
-  ([#66](https://github.com/ivni/imap-mcp/issues/66)).
-- Plaintext logging only; no structured logs or metrics
-  ([#67](https://github.com/ivni/imap-mcp/issues/67)).
+- Per session, requests serialize on that session's single IMAP connection;
+  separate sessions run concurrently (blocking work is offloaded off the event
+  loop) ([#65](https://github.com/ivni/imap-mcp/issues/65)).

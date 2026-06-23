@@ -1,12 +1,26 @@
 """IMAP client implementation."""
 
 import email
+import functools
 import logging
 import re
 import ssl
+import threading
 import time
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Concatenate,
+    Dict,
+    List,
+    Optional,
+    ParamSpec,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import imapclient  # type: ignore[import-untyped]
 from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
@@ -29,9 +43,59 @@ _FOLDER_CACHE_TTL_SECONDS = 300  # 5 minutes
 _RECONNECT_MAX_ATTEMPTS = 3
 _RECONNECT_BACKOFF_BASE_SECONDS = 0.5  # doubled each retry: 0.5s, 1.0s
 
+# Skip the liveness NOOP probe when the socket was used within this window. A
+# recently exercised connection is almost certainly still alive, so probing on
+# every call — and on every sub-call of a composite operation — would only add
+# redundant round-trips. After a longer idle gap (where a server-side idle
+# timeout could have dropped the link) the probe runs and reconnects if needed.
+_CONNECTION_PROBE_INTERVAL_SECONDS = 30.0
+
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _synchronized(
+    method: Callable[Concatenate["ImapClient", _P], _R],
+) -> Callable[Concatenate["ImapClient", _P], _R]:
+    """Serialize access to the shared IMAP socket.
+
+    When blocking IMAP calls are offloaded to threads via ``to_thread``
+    (issue #65), concurrent requests within the same MCP session may reach the
+    single ``imapclient`` connection simultaneously. ``imapclient`` is NOT
+    thread-safe on one socket: interleaved commands would corrupt the protocol
+    stream. This decorator guards every socket-touching method with a
+    re-entrant lock held for the duration of the (possibly composite) call.
+
+    Re-entrancy (``RLock``) is essential because composite operations such as
+    ``fetch_thread`` or ``save_draft_mime`` themselves call other decorated
+    methods — the outer call keeps the lock, so the whole sequence is atomic.
+
+    Pure helpers (``_validate_folder_name``, ``_validate_uid``,
+    ``_is_folder_allowed``, ``_should_probe``) intentionally are NOT
+    synchronized: they touch no socket and are cheap.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self: "ImapClient", *args: _P.args, **kwargs: _P.kwargs) -> _R:
+        with self._lock:
+            result = method(self, *args, **kwargs)
+            # Record successful socket activity so ensure_connected can skip the
+            # liveness probe while the connection is being actively used.
+            self._last_activity = time.monotonic()
+            return result
+
+    return wrapper
+
 
 class ImapClient:
-    """IMAP client for interacting with email servers."""
+    """IMAP client for interacting with email servers.
+
+    Thread-safe: every socket-touching method is serialized via an internal
+    re-entrant lock (see ``_synchronized``). This makes the client safe to call
+    from worker threads after async handlers offload blocking IMAP work with
+    ``anyio.to_thread.run_sync``.
+    """
 
     def __init__(self, config: ImapConfig, allowed_folders: Optional[List[str]] = None):
         """Initialize IMAP client.
@@ -51,7 +115,15 @@ class ImapClient:
         self.connected = False
         self.current_folder: Optional[str] = None
         self._hierarchy_delimiter: str = "/"
+        # Re-entrant lock serializing all access to the single IMAP socket.
+        # See ``_synchronized`` for why RLock (composite operations) and which
+        # methods are guarded.
+        self._lock: threading.RLock = threading.RLock()
+        # Monotonic timestamp of the last successful socket operation, used by
+        # ``_should_probe`` to avoid a liveness NOOP on every call.
+        self._last_activity: Optional[float] = None
 
+    @_synchronized
     def connect(self) -> None:
         """Connect to IMAP server.
 
@@ -85,6 +157,7 @@ class ImapClient:
             logger.error("Failed to connect to IMAP server: %s", e)
             raise ConnectionError(f"Failed to connect to IMAP server: {e}")
 
+    @_synchronized
     def verify_connection(self) -> List[str]:
         """Verify the IMAP connection is working by checking server capabilities.
 
@@ -103,6 +176,7 @@ class ImapClient:
             self.connected = False
             raise ConnectionError(f"IMAP connection verification failed: {e}")
 
+    @_synchronized
     def disconnect(self) -> None:
         """Disconnect from IMAP server."""
         if self.client:
@@ -114,6 +188,23 @@ class ImapClient:
                 self.client = None
                 self.connected = False
                 logger.info("Disconnected from IMAP server")
+
+    def _should_probe(self) -> bool:
+        """Whether to liveness-probe before reusing an established connection.
+
+        Returns True when the socket has been idle longer than
+        ``_CONNECTION_PROBE_INTERVAL_SECONDS`` (or has no recorded activity
+        yet). Skipping the probe on a recently used connection avoids a
+        redundant NOOP round-trip on every call — including each sub-call of a
+        composite operation — without risking a stale socket: a longer idle gap
+        (where a server-side timeout could have dropped the link) still triggers
+        the probe and a transparent reconnect.
+        """
+        if self._last_activity is None:
+            return True
+        return (
+            time.monotonic() - self._last_activity
+        ) >= _CONNECTION_PROBE_INTERVAL_SECONDS
 
     def _connection_alive(self) -> bool:
         """Probe the live connection with a lightweight NOOP.
@@ -170,21 +261,31 @@ class ImapClient:
             f"Failed to reconnect after {_RECONNECT_MAX_ATTEMPTS} attempts: {last_error}"
         )
 
+    @_synchronized
     def ensure_connected(self) -> None:
         """Ensure that we have a live connection to the IMAP server.
 
-        When not connected, connects. When already connected, probes the
-        socket with a lightweight NOOP and transparently reconnects if the
-        connection has dropped (idle timeout, server restart, or a transient
-        network blip) — without this, a dead socket would surface as an error
-        on the next operation instead of recovering.
+        When not connected, connects. When already connected but idle longer
+        than the probe interval, probes the socket with a lightweight NOOP and
+        transparently reconnects if the connection has dropped (idle timeout,
+        server restart, or a transient network blip) — without this, a dead
+        socket would surface as an error on the next operation instead of
+        recovering.
+
+        Synchronized: mutates connection state, so it must hold the socket lock.
+        Re-entrant callers (every socket-touching method reaches it via
+        ``_get_client``) already hold the lock; the RLock makes that safe.
 
         Raises:
             ConnectionError: If connection (or reconnection) fails
         """
         if not self.connected:
             self.connect()
-        elif self.client is not None and not self._connection_alive():
+        elif (
+            self.client is not None
+            and self._should_probe()
+            and not self._connection_alive()
+        ):
             logger.info("IMAP connection dropped, reconnecting")
             self._reconnect()
         if self.client is None:
@@ -201,6 +302,7 @@ class ImapClient:
             raise ConnectionError("Not connected to IMAP server")
         return self.client
 
+    @_synchronized
     def get_capabilities(self) -> List[str]:
         """Get IMAP server capabilities.
 
@@ -229,6 +331,7 @@ class ImapClient:
         elapsed = (datetime.now() - self._folder_cache_timestamp).total_seconds()
         return elapsed < _FOLDER_CACHE_TTL_SECONDS
 
+    @_synchronized
     def list_folders(self, refresh: bool = False) -> List[str]:
         """List available folders.
 
@@ -333,6 +436,7 @@ class ImapClient:
         if uid > 0xFFFFFFFF:
             raise ValueError(f"UID exceeds maximum 32-bit value: {uid}")
 
+    @_synchronized
     def select_folder(self, folder: str, readonly: bool = False) -> Dict[str, Any]:
         """Select folder on IMAP server.
 
@@ -364,6 +468,7 @@ class ImapClient:
             logger.error(f"Error selecting folder {folder}: {e}")
             raise ConnectionError(f"Failed to select folder {folder}: {e}")
 
+    @_synchronized
     def search(
         self,
         criteria: Union[str, List[Any], Tuple[Any, ...], Sequence[Any]],
@@ -420,6 +525,7 @@ class ImapClient:
         logger.debug(f"Search returned {len(results)} results")
         return list(results)
 
+    @_synchronized
     def fetch_email(self, uid: int, folder: str = "INBOX") -> Optional[Email]:
         """Fetch a single email by UID.
 
@@ -461,6 +567,7 @@ class ImapClient:
 
         return email_obj
 
+    @_synchronized
     def fetch_emails(
         self,
         uids: List[int],
@@ -527,6 +634,7 @@ class ImapClient:
 
         return emails
 
+    @_synchronized
     def fetch_thread(self, uid: int, folder: str = "INBOX") -> List[Email]:
         """Fetch all emails in a thread.
 
@@ -657,6 +765,7 @@ class ImapClient:
 
         return sorted_emails
 
+    @_synchronized
     def mark_email(
         self,
         uid: int,
@@ -693,6 +802,7 @@ class ImapClient:
             logger.debug(f"Removed flag {flag} from message {uid}")
         return True
 
+    @_synchronized
     def move_email(self, uid: int, source_folder: str, target_folder: str) -> bool:
         """Move email to another folder.
 
@@ -747,6 +857,7 @@ class ImapClient:
         logger.debug(f"Moved message {uid} from {source_folder} to {target_folder}")
         return True
 
+    @_synchronized
     def delete_email(self, uid: int, folder: str) -> bool:
         """Delete email.
 
@@ -772,6 +883,7 @@ class ImapClient:
         logger.debug(f"Deleted message {uid} from {folder}")
         return True
 
+    @_synchronized
     def _get_drafts_folder(self) -> str:
         """Get the drafts folder name for the current server.
 
@@ -802,6 +914,7 @@ class ImapClient:
         logger.warning("No drafts folder found, using INBOX as fallback")
         return "INBOX"
 
+    @_synchronized
     def save_draft_mime(self, message: Any) -> Optional[int]:
         """Save a MIME message as a draft.
 

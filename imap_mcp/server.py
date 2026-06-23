@@ -3,6 +3,9 @@
 import argparse
 import logging
 import os
+import re
+import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, Optional
 
@@ -11,21 +14,36 @@ from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
+from starlette.applications import Starlette
+from starlette.datastructures import Headers, MutableHeaders
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from imap_mcp import metrics
 from imap_mcp.config import ServerConfig, load_config
 from imap_mcp.imap_client import ImapClient
+from imap_mcp.logging_config import (
+    configure_logging,
+    reset_correlation_id,
+    set_correlation_id,
+)
+from imap_mcp.metrics import ASGIApp, PrometheusMiddleware, Receive, Scope, Send
 from imap_mcp.resources import register_resources
 from imap_mcp.smtp_client import verify_smtp_connection
 from imap_mcp.tools import register_tools
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger("imap_mcp")
+
+# Inbound correlation IDs are sanitized to a conservative character set and
+# length before use, so a hostile X-Request-ID cannot inject newlines into text
+# logs or carry an unbounded payload into log records.
+_CID_DISALLOWED = re.compile(r"[^A-Za-z0-9._-]")
+_CID_MAX_LEN = 128
+
+# The /ready probe opens a real IMAP connection. Cache the result briefly so the
+# unauthenticated endpoint cannot be used to force an IMAP login (and provoke
+# server-side rate limits or account lockouts) on every request.
+_READINESS_CACHE_TTL_SECONDS = 5.0
 
 
 @asynccontextmanager
@@ -50,13 +68,26 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict]:
 
     imap_client = ImapClient(config.imap, config.allowed_folders)
 
-    try:
-        # Connect to IMAP server
-        logger.info("Connecting to IMAP server...")
+    def _connect_and_verify() -> None:
         imap_client.connect()
-
         # Verify IMAP connection works (essential — fail startup if broken)
         imap_client.verify_connection()
+
+    session_active = False
+    try:
+        # Connect to IMAP server off the event loop: a slow login or
+        # unresponsive server must not block other sessions while this one is
+        # being established (issue #65).
+        try:
+            logger.info("Connecting to IMAP server...")
+            await anyio.to_thread.run_sync(_connect_and_verify)
+        except Exception:
+            metrics.SESSION_CONNECTION_ERRORS.inc()
+            raise
+
+        metrics.SESSION_CONNECTIONS.inc()
+        metrics.ACTIVE_SESSIONS.inc()
+        session_active = True
 
         # Log effective folder access policy
         if config.allowed_folders:
@@ -83,9 +114,11 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict]:
 
         yield context
     finally:
-        # Disconnect from IMAP server
+        if session_active:
+            metrics.ACTIVE_SESSIONS.dec()
+        # Disconnect from IMAP server (off the event loop, like connect).
         logger.info("Disconnecting from IMAP server...")
-        imap_client.disconnect()
+        await anyio.to_thread.run_sync(imap_client.disconnect)
 
 
 def _verify_imap_reachable(config: ServerConfig) -> None:
@@ -128,10 +161,9 @@ def create_server(
     Returns:
         Configured MCP server instance
     """
-    # Set up logging level
-    if debug:
-        logger.setLevel(logging.DEBUG)
-
+    # Logging (including the debug level) is configured once by
+    # ``configure_logging`` in ``main``; ``create_server`` must not also touch
+    # the logger level to avoid double configuration.
     # Load configuration
     config = load_config(config_path)
 
@@ -152,10 +184,36 @@ def create_server(
                 "OIDC_ISSUER_URL is required for streamable-http transport"
             )
 
+        # Bind tokens to this server. Without an expected audience, any token
+        # the trusted issuer minted for *another* resource server would be
+        # accepted here (token passthrough / confused-deputy; see RFC 8707).
+        # Require OIDC_AUDIENCE for HTTP transport; allow an explicit, logged
+        # opt-out for setups that genuinely cannot scope tokens per audience.
+        # Treat an empty/whitespace OIDC_AUDIENCE as unset so it cannot reach
+        # the verifier as a (rejecting) empty expected audience.
+        audience = (os.environ.get("OIDC_AUDIENCE") or "").strip() or None
+        allow_any_audience = (
+            os.environ.get("OIDC_ALLOW_ANY_AUDIENCE", "").lower() == "true"
+        )
+        if not audience and not allow_any_audience:
+            raise ValueError(
+                "OIDC_AUDIENCE is required for streamable-http transport: it binds "
+                "tokens to this server so tokens issued for other resource servers "
+                "of the same OIDC provider cannot be replayed here (token "
+                "passthrough / confused-deputy). Set OIDC_AUDIENCE to this server's "
+                "expected 'aud' claim, or set OIDC_ALLOW_ANY_AUDIENCE=true to "
+                "explicitly opt out (NOT recommended)."
+            )
+        if not audience:
+            logger.warning(
+                "OIDC_AUDIENCE is not set and OIDC_ALLOW_ANY_AUDIENCE=true — JWT "
+                "audience will NOT be verified; any token from the trusted issuer "
+                "is accepted (token passthrough risk)."
+            )
+
         from imap_mcp.auth import OIDCJWTVerifier, discover_jwks_uri
 
         jwks_uri = os.environ.get("OIDC_JWKS_URI") or discover_jwks_uri(oidc_issuer)
-        audience = os.environ.get("OIDC_AUDIENCE")
         mcp_server_url = os.environ.get(
             "MCP_RESOURCE_SERVER_URL", f"http://{host}:{port}/mcp"
         )
@@ -189,23 +247,72 @@ def create_server(
         """Liveness probe: 200 whenever the process is serving HTTP."""
         return JSONResponse({"status": "ok"})
 
+    # Cached readiness state shared across requests to this server instance.
+    # ``lock`` (created lazily inside the event loop) coalesces concurrent
+    # probes so at most one IMAP login runs per TTL window.
+    readiness_cache: Dict[str, Any] = {
+        "checked_at": None,
+        "ready": False,
+        "lock": None,
+    }
+
     @server.custom_route("/ready", methods=["GET"])
     async def readiness_check(request: Request) -> Response:
         """Readiness probe: 200 only when the IMAP server is reachable.
 
-        Opens a short-lived IMAP connection off the event loop. Returns 503
-        when IMAP is unreachable so orchestrators hold traffic until the
-        dependency recovers. Response bodies carry no connection details.
+        Opens a short-lived IMAP connection off the event loop, but caches the
+        result for ``_READINESS_CACHE_TTL_SECONDS`` so a flood of unauthenticated
+        probes cannot hammer the IMAP server with logins (rate-limit / lockout
+        risk). Returns 503 when IMAP is unreachable so orchestrators hold traffic
+        until the dependency recovers. Response bodies carry no connection
+        details.
         """
-        try:
-            await anyio.to_thread.run_sync(_verify_imap_reachable, config)
-        except Exception:
-            # A probe must never propagate: any failure means "not ready".
-            # Detail is intentionally omitted to avoid leaking config to
-            # unauthenticated callers; the cause is logged server-side.
-            logger.warning("Readiness check failed: IMAP server unreachable")
-            return JSONResponse({"status": "unavailable"}, status_code=503)
-        return JSONResponse({"status": "ready"})
+
+        def _is_fresh() -> bool:
+            checked_at = readiness_cache["checked_at"]
+            return (
+                checked_at is not None
+                and (time.monotonic() - checked_at) < _READINESS_CACHE_TTL_SECONDS
+            )
+
+        if not _is_fresh():
+            lock = readiness_cache["lock"]
+            if lock is None:
+                # Safe to create without its own guard: the event loop is
+                # single-threaded between awaits, and no await precedes this.
+                lock = anyio.Lock()
+                readiness_cache["lock"] = lock
+            async with lock:
+                # Another request may have refreshed the cache while we waited.
+                if not _is_fresh():
+                    try:
+                        await anyio.to_thread.run_sync(_verify_imap_reachable, config)
+                        readiness_cache["ready"] = True
+                    except Exception:
+                        # A probe must never propagate: any failure means "not
+                        # ready". Detail is intentionally omitted to avoid
+                        # leaking config to unauthenticated callers; the cause is
+                        # logged server-side.
+                        logger.warning(
+                            "Readiness check failed: IMAP server unreachable"
+                        )
+                        readiness_cache["ready"] = False
+                    readiness_cache["checked_at"] = time.monotonic()
+
+        if readiness_cache["ready"]:
+            return JSONResponse({"status": "ready"})
+        return JSONResponse({"status": "unavailable"}, status_code=503)
+
+    @server.custom_route("/metrics", methods=["GET"])
+    async def metrics_endpoint(request: Request) -> Response:
+        """Prometheus scrape endpoint exposing request and IMAP session metrics.
+
+        Unauthenticated, like the health probes (custom routes bypass OIDC).
+        Exposes only aggregate counters/gauges — never email content or
+        connection details — so restrict it to the monitoring network.
+        """
+        body, content_type = metrics.render_latest()
+        return Response(body, media_type=content_type)
 
     # Add server status tool
     @server.tool(
@@ -245,6 +352,86 @@ def create_server(
         return "\n".join(f"{k}: {v}" for k, v in status.items())
 
     return server
+
+
+def _sanitize_correlation_id(value: str) -> str:
+    """Reduce an inbound correlation ID to a safe, bounded token.
+
+    Strips characters outside ``[A-Za-z0-9._-]`` and truncates, so a hostile
+    ``X-Request-ID`` cannot inject log-line breaks or carry an oversized payload.
+    Returns an empty string when nothing usable remains.
+    """
+    return _CID_DISALLOWED.sub("", value)[:_CID_MAX_LEN]
+
+
+class CorrelationIdMiddleware:
+    """Bind a correlation ID to each HTTP request for log correlation.
+
+    Reuses a sanitized inbound ``X-Request-ID`` header when present (preserving
+    an upstream proxy's ID end-to-end), otherwise generates one. The ID is
+    echoed in the ``X-Request-ID`` response header and bound to the logging
+    context (a ``ContextVar``) for the request's duration — including offloaded
+    IMAP work, since ``anyio.to_thread.run_sync`` copies the active context.
+
+    Raw ASGI (not ``BaseHTTPMiddleware``) so the streaming /mcp endpoint is not
+    buffered.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        inbound = Headers(scope=scope).get("x-request-id", "")
+        correlation_id = _sanitize_correlation_id(inbound) or uuid.uuid4().hex
+        token = set_correlation_id(correlation_id)
+
+        async def send_wrapper(message: Any) -> None:
+            if message.get("type") == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers["x-request-id"] = correlation_id
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            reset_correlation_id(token)
+
+
+def build_streamable_http_app(server: FastMCP) -> Starlette:
+    """Build the streamable-HTTP ASGI app wrapped with observability middleware.
+
+    Adds correlation-ID and Prometheus middleware around FastMCP's app. Both are
+    raw ASGI middleware, so the streaming /mcp endpoint is not buffered.
+    Middleware is added before the app serves any request, so Starlette's
+    deferred stack is still mutable.
+    """
+    app = server.streamable_http_app()
+    known_paths = frozenset(
+        {server.settings.streamable_http_path, "/health", "/ready", "/metrics"}
+    )
+    # add_middleware prepends, so the last added is outermost. Correlation ID
+    # must be bound before anything else runs, so add it last (outermost).
+    app.add_middleware(PrometheusMiddleware, known_paths=known_paths)
+    app.add_middleware(CorrelationIdMiddleware)
+    return app
+
+
+def _run_http(server: FastMCP, host: str, port: int) -> None:
+    """Serve the streamable-HTTP app with uvicorn, including observability.
+
+    Runs uvicorn directly (rather than ``server.run``) so the correlation-ID and
+    Prometheus middleware wrap the app. ``log_config=None`` leaves uvicorn's
+    loggers propagating to the root handler configured by ``configure_logging``,
+    so its output follows the same (optionally JSON) format.
+    """
+    import uvicorn
+
+    app = build_streamable_http_app(server)
+    uvicorn.run(app, host=host, port=port, log_config=None)
 
 
 def main() -> None:
@@ -293,8 +480,8 @@ def main() -> None:
         print("IMAP MCP Server version 0.1.0")
         return
 
-    if args.debug:
-        logger.setLevel(logging.DEBUG)
+    # Configure logging before anything logs; honors IMAP_MCP_LOG_FORMAT.
+    configure_logging(debug=args.debug)
 
     server = create_server(
         args.config, args.debug, args.transport, args.host, args.port
@@ -304,7 +491,10 @@ def main() -> None:
     logger.info(
         "Starting server{}...".format(" in development mode" if args.dev else "")
     )
-    server.run(transport=args.transport)
+    if args.transport == "streamable-http":
+        _run_http(server, args.host, args.port)
+    else:
+        server.run(transport=args.transport)
 
 
 if __name__ == "__main__":

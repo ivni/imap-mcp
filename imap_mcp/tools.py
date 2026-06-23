@@ -4,8 +4,9 @@ import json
 import logging
 import os
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
+import anyio
 from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
@@ -192,14 +193,18 @@ def register_tools(mcp: FastMCP) -> None:
         error = _validate_tool_folder(client, folder)
         if error:
             return {"is_invite": False, "details": {}, "error": error}
-        email_obj = client.fetch_email(uid, folder)
-        if not email_obj:
-            return {
-                "is_invite": False,
-                "details": {},
-                "error": f"Email UID {uid} not found",
-            }
-        return identify_meeting_invite_details(email_obj)
+
+        def _do_identify() -> Dict[str, Any]:
+            email_obj = client.fetch_email(uid, folder)
+            if not email_obj:
+                return {
+                    "is_invite": False,
+                    "details": {},
+                    "error": f"Email UID {uid} not found",
+                }
+            return identify_meeting_invite_details(email_obj)
+
+        return await anyio.to_thread.run_sync(_do_identify)
 
     @mcp.tool(
         title="Check Calendar Availability",
@@ -280,52 +285,55 @@ def register_tools(mcp: FastMCP) -> None:
 
         from imap_mcp.smtp_client import create_reply_mime
 
-        email_obj = client.fetch_email(uid, folder)
-        if not email_obj:
-            return {
-                "status": "error",
-                "message": f"Email UID {uid} not found in {folder}",
-            }
+        def _do_draft_reply() -> Dict[str, Any]:
+            email_obj = client.fetch_email(uid, folder)
+            if not email_obj:
+                return {
+                    "status": "error",
+                    "message": f"Email UID {uid} not found in {folder}",
+                }
 
-        # Determine sender for the reply
-        reply_from = EmailAddress(name="", address=client.config.username)
+            # Determine sender for the reply
+            reply_from = EmailAddress(name="", address=client.config.username)
 
-        # Parse CC addresses
-        if cc:
+            # Parse CC addresses
+            if cc:
+                try:
+                    cc_addresses = [EmailAddress.parse(addr) for addr in cc]
+                except ValueError as e:
+                    return {"status": "error", "message": f"Invalid CC address: {e}"}
+            else:
+                cc_addresses = None
+
+            # Create the reply MIME message
+            mime_message = create_reply_mime(
+                original_email=email_obj,
+                reply_to=reply_from,
+                body=reply_body,
+                cc=cc_addresses,
+                reply_all=reply_all,
+                html_body=body_html,
+            )
+
+            # Save as draft
             try:
-                cc_addresses = [EmailAddress.parse(addr) for addr in cc]
-            except ValueError as e:
-                return {"status": "error", "message": f"Invalid CC address: {e}"}
-        else:
-            cc_addresses = None
-
-        # Create the reply MIME message
-        mime_message = create_reply_mime(
-            original_email=email_obj,
-            reply_to=reply_from,
-            body=reply_body,
-            cc=cc_addresses,
-            reply_all=reply_all,
-            html_body=body_html,
-        )
-
-        # Save as draft
-        try:
-            draft_uid = client.save_draft_mime(mime_message)
-        except (IMAPClientError, OSError) as e:
+                draft_uid = client.save_draft_mime(mime_message)
+            except (IMAPClientError, OSError) as e:
+                return {
+                    "status": "error",
+                    "message": f"Failed to save draft: {e}",
+                    "reply_body": reply_body,
+                }
+            if draft_uid:
+                return {"status": "success", "draft_uid": draft_uid}
             return {
-                "status": "error",
-                "message": f"Failed to save draft: {e}",
+                "status": "success",
+                "draft_uid": None,
+                "message": "Draft saved (UID not available)",
                 "reply_body": reply_body,
             }
-        if draft_uid:
-            return {"status": "success", "draft_uid": draft_uid}
-        return {
-            "status": "success",
-            "draft_uid": None,
-            "message": "Draft saved (UID not available)",
-            "reply_body": reply_body,
-        }
+
+        return await anyio.to_thread.run_sync(_do_draft_reply)
 
     @mcp.tool(
         title="Move Email",
@@ -373,18 +381,23 @@ def register_tools(mcp: FastMCP) -> None:
                 return "Action aborted: confirmation system error for move"
             return "Action cancelled: move not confirmed by user"
 
-        try:
-            success = client.move_email(uid, folder, target_folder)
-            if success:
-                return f"Email moved from {folder} to {target_folder}"
-            else:
-                return "Failed to move email"
-        except (IMAPClientError, OSError, ValueError) as e:
-            logger.error(f"Error moving email: {e}")
-            return f"Error: {e}"
-        except Exception:
-            logger.error("Unexpected error moving email", exc_info=True)
-            return "Error: an unexpected error occurred"
+        def _do_move() -> str:
+            try:
+                success = client.move_email(uid, folder, target_folder)
+                if success:
+                    return f"Email moved from {folder} to {target_folder}"
+                else:
+                    return "Failed to move email"
+            except (IMAPClientError, OSError, ValueError) as e:
+                logger.error(f"Error moving email: {e}")
+                return f"Error: {e}"
+            except Exception:
+                logger.error("Unexpected error moving email", exc_info=True)
+                return "Error: an unexpected error occurred"
+
+        # Offload blocking IMAP work to a worker thread so the event loop
+        # (and thus other concurrent sessions) is not blocked (issue #65).
+        return await anyio.to_thread.run_sync(_do_move)
 
     @mcp.tool(
         title="Mark as Read",
@@ -417,18 +430,21 @@ def register_tools(mcp: FastMCP) -> None:
         if error:
             return error
 
-        try:
-            success = client.mark_email(uid, folder, r"\Seen", True)
-            if success:
-                return "Email marked as read"
-            else:
-                return "Failed to mark email as read"
-        except (IMAPClientError, OSError, ValueError) as e:
-            logger.error(f"Error marking email as read: {e}")
-            return f"Error: {e}"
-        except Exception:
-            logger.error("Unexpected error marking email as read", exc_info=True)
-            return "Error: an unexpected error occurred"
+        def _do_mark_read() -> str:
+            try:
+                success = client.mark_email(uid, folder, r"\Seen", True)
+                if success:
+                    return "Email marked as read"
+                else:
+                    return "Failed to mark email as read"
+            except (IMAPClientError, OSError, ValueError) as e:
+                logger.error(f"Error marking email as read: {e}")
+                return f"Error: {e}"
+            except Exception:
+                logger.error("Unexpected error marking email as read", exc_info=True)
+                return "Error: an unexpected error occurred"
+
+        return await anyio.to_thread.run_sync(_do_mark_read)
 
     @mcp.tool(
         title="Mark as Unread",
@@ -461,18 +477,21 @@ def register_tools(mcp: FastMCP) -> None:
         if error:
             return error
 
-        try:
-            success = client.mark_email(uid, folder, r"\Seen", False)
-            if success:
-                return "Email marked as unread"
-            else:
-                return "Failed to mark email as unread"
-        except (IMAPClientError, OSError, ValueError) as e:
-            logger.error(f"Error marking email as unread: {e}")
-            return f"Error: {e}"
-        except Exception:
-            logger.error("Unexpected error marking email as unread", exc_info=True)
-            return "Error: an unexpected error occurred"
+        def _do_mark_unread() -> str:
+            try:
+                success = client.mark_email(uid, folder, r"\Seen", False)
+                if success:
+                    return "Email marked as unread"
+                else:
+                    return "Failed to mark email as unread"
+            except (IMAPClientError, OSError, ValueError) as e:
+                logger.error(f"Error marking email as unread: {e}")
+                return f"Error: {e}"
+            except Exception:
+                logger.error("Unexpected error marking email as unread", exc_info=True)
+                return "Error: an unexpected error occurred"
+
+        return await anyio.to_thread.run_sync(_do_mark_unread)
 
     @mcp.tool(
         title="Flag/Unflag Email",
@@ -507,18 +526,21 @@ def register_tools(mcp: FastMCP) -> None:
         if error:
             return error
 
-        try:
-            success = client.mark_email(uid, folder, r"\Flagged", flag)
-            if success:
-                return f"Email {'flagged' if flag else 'unflagged'}"
-            else:
-                return f"Failed to {'flag' if flag else 'unflag'} email"
-        except (IMAPClientError, OSError, ValueError) as e:
-            logger.error(f"Error flagging email: {e}")
-            return f"Error: {e}"
-        except Exception:
-            logger.error("Unexpected error flagging email", exc_info=True)
-            return "Error: an unexpected error occurred"
+        def _do_flag() -> str:
+            try:
+                success = client.mark_email(uid, folder, r"\Flagged", flag)
+                if success:
+                    return f"Email {'flagged' if flag else 'unflagged'}"
+                else:
+                    return f"Failed to {'flag' if flag else 'unflag'} email"
+            except (IMAPClientError, OSError, ValueError) as e:
+                logger.error(f"Error flagging email: {e}")
+                return f"Error: {e}"
+            except Exception:
+                logger.error("Unexpected error flagging email", exc_info=True)
+                return "Error: an unexpected error occurred"
+
+        return await anyio.to_thread.run_sync(_do_flag)
 
     @mcp.tool(
         title="Delete Email",
@@ -558,18 +580,21 @@ def register_tools(mcp: FastMCP) -> None:
                 return "Action aborted: confirmation system error for delete"
             return "Action cancelled: delete not confirmed by user"
 
-        try:
-            success = client.delete_email(uid, folder)
-            if success:
-                return "Email deleted"
-            else:
-                return "Failed to delete email"
-        except (IMAPClientError, OSError, ValueError) as e:
-            logger.error(f"Error deleting email: {e}")
-            return f"Error: {e}"
-        except Exception:
-            logger.error("Unexpected error deleting email", exc_info=True)
-            return "Error: an unexpected error occurred"
+        def _do_delete() -> str:
+            try:
+                success = client.delete_email(uid, folder)
+                if success:
+                    return "Email deleted"
+                else:
+                    return "Failed to delete email"
+            except (IMAPClientError, OSError, ValueError) as e:
+                logger.error(f"Error deleting email: {e}")
+                return f"Error: {e}"
+            except Exception:
+                logger.error("Unexpected error deleting email", exc_info=True)
+                return "Error: an unexpected error occurred"
+
+        return await anyio.to_thread.run_sync(_do_delete)
 
     @mcp.tool(
         title="Search Emails",
@@ -637,44 +662,49 @@ def register_tools(mcp: FastMCP) -> None:
 
         search_criteria = search_criteria_map[criteria.lower()]
 
-        folders_to_search = [folder] if folder else client.list_folders()
-        results = []
-        total_count = 0
+        def _do_search() -> Tuple[List[Dict[str, Any]], int]:
+            folders_to_search = [folder] if folder else client.list_folders()
+            results = []
+            total_count = 0
 
-        for current_folder in folders_to_search:
-            try:
-                # Search for emails
-                uids = client.search(search_criteria, folder=current_folder)
-                total_count += len(uids)
+            for current_folder in folders_to_search:
+                try:
+                    # Search for emails
+                    uids = client.search(search_criteria, folder=current_folder)
+                    total_count += len(uids)
 
-                if uids:
-                    # Fetch emails
-                    emails = client.fetch_emails(uids, folder=current_folder)
+                    if uids:
+                        # Fetch emails
+                        emails = client.fetch_emails(uids, folder=current_folder)
 
-                    # Create summaries
-                    for uid, email_obj in emails.items():
-                        results.append(
-                            {
-                                "uid": uid,
-                                "folder": current_folder,
-                                "from": str(email_obj.from_),
-                                "to": [str(to) for to in email_obj.to],
-                                "subject": email_obj.subject,
-                                "date": email_obj.date.isoformat()
-                                if email_obj.date
-                                else None,
-                                "flags": email_obj.flags,
-                                "has_attachments": len(email_obj.attachments) > 0,
-                            }
-                        )
-            except (IMAPClientError, OSError, ValueError) as e:
-                logger.warning(f"Error searching folder {current_folder}: {e}")
-            except Exception:
-                logger.warning(
-                    "Unexpected error searching folder %s",
-                    current_folder,
-                    exc_info=True,
-                )
+                        # Create summaries
+                        for uid, email_obj in emails.items():
+                            results.append(
+                                {
+                                    "uid": uid,
+                                    "folder": current_folder,
+                                    "from": str(email_obj.from_),
+                                    "to": [str(to) for to in email_obj.to],
+                                    "subject": email_obj.subject,
+                                    "date": email_obj.date.isoformat()
+                                    if email_obj.date
+                                    else None,
+                                    "flags": email_obj.flags,
+                                    "has_attachments": len(email_obj.attachments) > 0,
+                                }
+                            )
+                except (IMAPClientError, OSError, ValueError) as e:
+                    logger.warning(f"Error searching folder {current_folder}: {e}")
+                except Exception:
+                    logger.warning(
+                        "Unexpected error searching folder %s",
+                        current_folder,
+                        exc_info=True,
+                    )
+
+            return results, total_count
+
+        results, total_count = await anyio.to_thread.run_sync(_do_search)
 
         # Sort results by date (newest first)
         results.sort(key=lambda x: str(x.get("date") or "0"), reverse=True)
@@ -750,64 +780,69 @@ def register_tools(mcp: FastMCP) -> None:
                     return f"Action aborted: confirmation system error for {action}"
                 return f"Action cancelled: {action} not confirmed by user"
 
-        # Fetch the email first to have context for learning
-        email_obj = client.fetch_email(uid, folder)
-        if not email_obj:
-            return f"Email with UID {uid} not found in folder {folder}"
+        def _do_process() -> str:
+            # Fetch the email first to have context for learning
+            email_obj = client.fetch_email(uid, folder)
+            if not email_obj:
+                return f"Email with UID {uid} not found in folder {folder}"
 
-        # Process the action
-        result = ""
-        try:
-            if action.lower() == "move":
-                if not target_folder:
-                    return "Target folder must be specified for move action"
-                success = client.move_email(uid, folder, target_folder)
-                if success:
-                    result = f"Email moved from {folder} to {target_folder}"
+            # Process the action
+            result = ""
+            try:
+                if action.lower() == "move":
+                    if not target_folder:
+                        return "Target folder must be specified for move action"
+                    success = client.move_email(uid, folder, target_folder)
+                    if success:
+                        result = f"Email moved from {folder} to {target_folder}"
+                    else:
+                        result = (
+                            f"Failed to move email from {folder} to {target_folder}"
+                        )
+                elif action.lower() == "read":
+                    success = client.mark_email(uid, folder, r"\Seen", True)
+                    if success:
+                        result = "Email marked as read"
+                    else:
+                        result = "Failed to mark email as read"
+                elif action.lower() == "unread":
+                    success = client.mark_email(uid, folder, r"\Seen", False)
+                    if success:
+                        result = "Email marked as unread"
+                    else:
+                        result = "Failed to mark email as unread"
+                elif action.lower() == "flag":
+                    success = client.mark_email(uid, folder, r"\Flagged", True)
+                    if success:
+                        result = "Email flagged"
+                    else:
+                        result = "Failed to flag email"
+                elif action.lower() == "unflag":
+                    success = client.mark_email(uid, folder, r"\Flagged", False)
+                    if success:
+                        result = "Email unflagged"
+                    else:
+                        result = "Failed to unflag email"
+                elif action.lower() == "delete":
+                    success = client.delete_email(uid, folder)
+                    if success:
+                        result = "Email deleted"
+                    else:
+                        result = "Failed to delete email"
                 else:
-                    result = f"Failed to move email from {folder} to {target_folder}"
-            elif action.lower() == "read":
-                success = client.mark_email(uid, folder, r"\Seen", True)
-                if success:
-                    result = "Email marked as read"
-                else:
-                    result = "Failed to mark email as read"
-            elif action.lower() == "unread":
-                success = client.mark_email(uid, folder, r"\Seen", False)
-                if success:
-                    result = "Email marked as unread"
-                else:
-                    result = "Failed to mark email as unread"
-            elif action.lower() == "flag":
-                success = client.mark_email(uid, folder, r"\Flagged", True)
-                if success:
-                    result = "Email flagged"
-                else:
-                    result = "Failed to flag email"
-            elif action.lower() == "unflag":
-                success = client.mark_email(uid, folder, r"\Flagged", False)
-                if success:
-                    result = "Email unflagged"
-                else:
-                    result = "Failed to unflag email"
-            elif action.lower() == "delete":
-                success = client.delete_email(uid, folder)
-                if success:
-                    result = "Email deleted"
-                else:
-                    result = "Failed to delete email"
-            else:
-                return f"Invalid action: {action}"
+                    return f"Invalid action: {action}"
 
-            # TODO: Record the action for learning in a separate module
+                # TODO: Record the action for learning in a separate module
 
-            return result
-        except (IMAPClientError, OSError, ValueError) as e:
-            logger.error(f"Error processing email: {e}")
-            return f"Error: {e}"
-        except Exception:
-            logger.error("Unexpected error processing email", exc_info=True)
-            return "Error: an unexpected error occurred"
+                return result
+            except (IMAPClientError, OSError, ValueError) as e:
+                logger.error(f"Error processing email: {e}")
+                return f"Error: {e}"
+            except Exception:
+                logger.error("Unexpected error processing email", exc_info=True)
+                return "Error: an unexpected error occurred"
+
+        return await anyio.to_thread.run_sync(_do_process)
 
     @mcp.tool(
         title="Process Meeting Invite",
@@ -886,103 +921,110 @@ def register_tools(mcp: FastMCP) -> None:
         from imap_mcp.workflows.invite_parser import identify_meeting_invite_details
         from imap_mcp.workflows.meeting_reply import generate_meeting_reply_content
 
-        result: Dict[str, Any] = {
-            "status": "error",
-            "message": "An error occurred during processing",
-            "draft_uid": None,
-            "draft_folder": None,
-            "availability": None,
-        }
+        def _do_process_meeting_invite() -> Dict[str, Any]:
+            result: Dict[str, Any] = {
+                "status": "error",
+                "message": "An error occurred during processing",
+                "draft_uid": None,
+                "draft_folder": None,
+                "availability": None,
+            }
 
-        try:
-            # Step 1: Fetch the original email
-            logger.info(f"Fetching email UID {uid} from folder {folder}")
-            email_obj = client.fetch_email(uid, folder)
-
-            if not email_obj:
-                result["message"] = f"Email with UID {uid} not found in folder {folder}"
-                return result
-
-            # Step 2: Identify if it's a meeting invite
-            logger.info(
-                "Analyzing email UID %d in folder %s for meeting invite details",
-                uid,
-                folder,
-            )
-            invite_result = identify_meeting_invite_details(email_obj)
-
-            if not invite_result["is_invite"]:
-                result["status"] = "not_invite"
-                result["message"] = "The email is not a meeting invite"
-                return result
-
-            invite_details = invite_result["details"]
-
-            # Step 3: Check calendar availability
-            logger.info("Checking calendar availability for meeting time slot")
-            availability_result = check_mock_availability(
-                invite_details.get("start_time"),
-                invite_details.get("end_time"),
-                availability_mode,
-            )
-
-            result["availability"] = availability_result["available"]
-
-            # Step 4: Generate reply content
-            logger.info(
-                f"Generating {'accept' if availability_result['available'] else 'decline'} reply"
-            )
-            reply_content = generate_meeting_reply_content(
-                invite_details, availability_result
-            )
-
-            # Step 5: Create MIME message for reply
-            logger.info("Creating MIME message for reply")
-            # Create EmailAddress object for the reply sender
-            reply_from = EmailAddress(name="", address=client.config.username)
-
-            # Create the reply MIME message - using the standalone function
-            mime_message = create_reply_mime(
-                original_email=email_obj,
-                reply_to=reply_from,
-                body=reply_content["reply_body"],
-                subject=reply_content["reply_subject"],
-                # Don't use reply_all for meeting responses
-                reply_all=False,
-            )
-
-            # Step 6: Save as draft
-            logger.info("Saving reply as draft")
             try:
-                draft_uid = client.save_draft_mime(mime_message)
-            except (IMAPClientError, OSError) as e:
-                result["message"] = f"Failed to save draft: {e}"
-                result["reply_body"] = reply_content["reply_body"]
-                return result
+                # Step 1: Fetch the original email
+                logger.info(f"Fetching email UID {uid} from folder {folder}")
+                email_obj = client.fetch_email(uid, folder)
 
-            if draft_uid:
-                drafts_folder = client._get_drafts_folder()
-                result["status"] = "success"
-                result["message"] = (
-                    f"Draft reply created: {reply_content['reply_type']}"
-                )
-                result["draft_uid"] = draft_uid
-                result["draft_folder"] = drafts_folder
+                if not email_obj:
+                    result["message"] = (
+                        f"Email with UID {uid} not found in folder {folder}"
+                    )
+                    return result
+
+                # Step 2: Identify if it's a meeting invite
                 logger.info(
-                    f"Draft saved successfully with UID {draft_uid} in folder {drafts_folder}"
+                    "Analyzing email UID %d in folder %s for meeting invite details",
+                    uid,
+                    folder,
                 )
-            else:
-                drafts_folder = client._get_drafts_folder()
-                result["status"] = "success"
-                result["message"] = "Draft saved (UID not available)"
-                result["draft_folder"] = drafts_folder
-                result["reply_body"] = reply_content["reply_body"]
+                invite_result = identify_meeting_invite_details(email_obj)
 
-        except (IMAPClientError, OSError, ValueError) as e:
-            logger.error(f"Error processing meeting invite: {e}")
-            result["message"] = f"Error: {e}"
-        except Exception:
-            logger.error("Unexpected error processing meeting invite", exc_info=True)
-            result["message"] = "Error: an unexpected error occurred"
+                if not invite_result["is_invite"]:
+                    result["status"] = "not_invite"
+                    result["message"] = "The email is not a meeting invite"
+                    return result
 
-        return result
+                invite_details = invite_result["details"]
+
+                # Step 3: Check calendar availability
+                logger.info("Checking calendar availability for meeting time slot")
+                availability_result = check_mock_availability(
+                    invite_details.get("start_time"),
+                    invite_details.get("end_time"),
+                    availability_mode,
+                )
+
+                result["availability"] = availability_result["available"]
+
+                # Step 4: Generate reply content
+                logger.info(
+                    f"Generating {'accept' if availability_result['available'] else 'decline'} reply"
+                )
+                reply_content = generate_meeting_reply_content(
+                    invite_details, availability_result
+                )
+
+                # Step 5: Create MIME message for reply
+                logger.info("Creating MIME message for reply")
+                # Create EmailAddress object for the reply sender
+                reply_from = EmailAddress(name="", address=client.config.username)
+
+                # Create the reply MIME message - using the standalone function
+                mime_message = create_reply_mime(
+                    original_email=email_obj,
+                    reply_to=reply_from,
+                    body=reply_content["reply_body"],
+                    subject=reply_content["reply_subject"],
+                    # Don't use reply_all for meeting responses
+                    reply_all=False,
+                )
+
+                # Step 6: Save as draft
+                logger.info("Saving reply as draft")
+                try:
+                    draft_uid = client.save_draft_mime(mime_message)
+                except (IMAPClientError, OSError) as e:
+                    result["message"] = f"Failed to save draft: {e}"
+                    result["reply_body"] = reply_content["reply_body"]
+                    return result
+
+                if draft_uid:
+                    drafts_folder = client._get_drafts_folder()
+                    result["status"] = "success"
+                    result["message"] = (
+                        f"Draft reply created: {reply_content['reply_type']}"
+                    )
+                    result["draft_uid"] = draft_uid
+                    result["draft_folder"] = drafts_folder
+                    logger.info(
+                        f"Draft saved successfully with UID {draft_uid} in folder {drafts_folder}"
+                    )
+                else:
+                    drafts_folder = client._get_drafts_folder()
+                    result["status"] = "success"
+                    result["message"] = "Draft saved (UID not available)"
+                    result["draft_folder"] = drafts_folder
+                    result["reply_body"] = reply_content["reply_body"]
+
+            except (IMAPClientError, OSError, ValueError) as e:
+                logger.error(f"Error processing meeting invite: {e}")
+                result["message"] = f"Error: {e}"
+            except Exception:
+                logger.error(
+                    "Unexpected error processing meeting invite", exc_info=True
+                )
+                result["message"] = "Error: an unexpected error occurred"
+
+            return result
+
+        return await anyio.to_thread.run_sync(_do_process_meeting_invite)

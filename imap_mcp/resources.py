@@ -4,6 +4,7 @@ import json
 import logging
 from typing import Any, Dict, List
 
+import anyio
 from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 from mcp.server.fastmcp import Context, FastMCP
 
@@ -57,7 +58,7 @@ def register_resources(mcp: FastMCP) -> None:
         """
         ctx: Context = mcp.get_context()  # type: ignore[assignment]
         client = get_client_from_context(ctx)
-        folders = client.list_folders()
+        folders = await anyio.to_thread.run_sync(client.list_folders)
         return json.dumps(folders, indent=2)
 
     @mcp.resource(
@@ -81,40 +82,45 @@ def register_resources(mcp: FastMCP) -> None:
         ctx: Context = mcp.get_context()  # type: ignore[assignment]
         client = get_client_from_context(ctx)
 
-        # Search for all emails in the folder
-        try:
-            uids = client.search("ALL", folder=folder)
+        def _do_list() -> str:
+            # Search for all emails in the folder
+            try:
+                uids = client.search("ALL", folder=folder)
 
-            # Limit to the 50 most recent emails to avoid overwhelming
-            # the LLM with too much context
-            uids = sorted(uids, reverse=True)[:50]
+                # Limit to the 50 most recent emails to avoid overwhelming
+                # the LLM with too much context
+                uids = sorted(uids, reverse=True)[:50]
 
-            # Fetch emails
-            emails = client.fetch_emails(uids, folder=folder)
+                # Fetch emails
+                emails = client.fetch_emails(uids, folder=folder)
 
-            # Create summaries
-            summaries: List[Dict[str, Any]] = []
-            for uid, email_obj in emails.items():
-                summaries.append(
-                    {
-                        "uid": uid,
-                        "folder": folder,
-                        "from": str(email_obj.from_),
-                        "to": [str(to) for to in email_obj.to],
-                        "subject": email_obj.subject,
-                        "date": email_obj.date.isoformat() if email_obj.date else None,
-                        "flags": email_obj.flags,
-                        "has_attachments": len(email_obj.attachments) > 0,
-                    }
-                )
+                # Create summaries
+                summaries: List[Dict[str, Any]] = []
+                for uid, email_obj in emails.items():
+                    summaries.append(
+                        {
+                            "uid": uid,
+                            "folder": folder,
+                            "from": str(email_obj.from_),
+                            "to": [str(to) for to in email_obj.to],
+                            "subject": email_obj.subject,
+                            "date": email_obj.date.isoformat()
+                            if email_obj.date
+                            else None,
+                            "flags": email_obj.flags,
+                            "has_attachments": len(email_obj.attachments) > 0,
+                        }
+                    )
 
-            return json.dumps(summaries, indent=2)
-        except (IMAPClientError, OSError, ValueError) as e:
-            logger.error(f"Error listing emails: {e}")
-            return f"Error: {e}"
-        except Exception:
-            logger.error("Unexpected error listing emails", exc_info=True)
-            return "Error: an unexpected error occurred"
+                return json.dumps(summaries, indent=2)
+            except (IMAPClientError, OSError, ValueError) as e:
+                logger.error(f"Error listing emails: {e}")
+                return f"Error: {e}"
+            except Exception:
+                logger.error("Unexpected error listing emails", exc_info=True)
+                return "Error: an unexpected error occurred"
+
+        return await anyio.to_thread.run_sync(_do_list)
 
     @mcp.resource(
         "email://search/{query}",
@@ -137,53 +143,63 @@ def register_resources(mcp: FastMCP) -> None:
         ctx: Context = mcp.get_context()  # type: ignore[assignment]
         client = get_client_from_context(ctx)
 
-        # Get all folders
-        folders = client.list_folders()
-        results: List[Dict[str, Any]] = []
+        def _do_search() -> List[Dict[str, Any]]:
+            # Get all folders
+            folders = client.list_folders()
+            results: List[Dict[str, Any]] = []
 
-        for folder in folders:
-            try:
-                # Customize the search criteria based on the query
-                if query.lower() in ["all", "unseen", "seen", "today", "week", "month"]:
-                    # Predefined searches
-                    uids = client.search(query, folder=folder)
-                else:
-                    # Text search
-                    uids = client.search(["TEXT", query], folder=folder)
+            for folder in folders:
+                try:
+                    # Customize the search criteria based on the query
+                    if query.lower() in [
+                        "all",
+                        "unseen",
+                        "seen",
+                        "today",
+                        "week",
+                        "month",
+                    ]:
+                        # Predefined searches
+                        uids = client.search(query, folder=folder)
+                    else:
+                        # Text search
+                        uids = client.search(["TEXT", query], folder=folder)
 
-                # Limit results per folder
-                uids = sorted(uids, reverse=True)[:10]
+                    # Limit results per folder
+                    uids = sorted(uids, reverse=True)[:10]
 
-                if uids:
-                    # Fetch emails
-                    emails = client.fetch_emails(uids, folder=folder)
+                    if uids:
+                        # Fetch emails
+                        emails = client.fetch_emails(uids, folder=folder)
 
-                    # Create summaries
-                    for uid, email_obj in emails.items():
-                        results.append(
-                            {
-                                "uid": uid,
-                                "folder": folder,
-                                "from": str(email_obj.from_),
-                                "to": [str(to) for to in email_obj.to],
-                                "subject": email_obj.subject,
-                                "date": email_obj.date.isoformat()
-                                if email_obj.date
-                                else None,
-                                "flags": email_obj.flags,
-                                "has_attachments": len(email_obj.attachments) > 0,
-                            }
-                        )
-            except (IMAPClientError, OSError, ValueError) as e:
-                logger.warning(f"Error searching folder {folder}: {e}")
-            except Exception:
-                logger.warning(
-                    "Unexpected error searching folder %s", folder, exc_info=True
-                )
+                        # Create summaries
+                        for uid, email_obj in emails.items():
+                            results.append(
+                                {
+                                    "uid": uid,
+                                    "folder": folder,
+                                    "from": str(email_obj.from_),
+                                    "to": [str(to) for to in email_obj.to],
+                                    "subject": email_obj.subject,
+                                    "date": email_obj.date.isoformat()
+                                    if email_obj.date
+                                    else None,
+                                    "flags": email_obj.flags,
+                                    "has_attachments": len(email_obj.attachments) > 0,
+                                }
+                            )
+                except (IMAPClientError, OSError, ValueError) as e:
+                    logger.warning(f"Error searching folder {folder}: {e}")
+                except Exception:
+                    logger.warning(
+                        "Unexpected error searching folder %s", folder, exc_info=True
+                    )
 
-        # Sort results by date (newest first)
-        results.sort(key=lambda x: str(x.get("date") or "0"), reverse=True)
+            # Sort results by date (newest first)
+            results.sort(key=lambda x: str(x.get("date") or "0"), reverse=True)
+            return results
 
+        results = await anyio.to_thread.run_sync(_do_search)
         return json.dumps(results, indent=2)
 
     @mcp.resource(
@@ -208,53 +224,56 @@ def register_resources(mcp: FastMCP) -> None:
         ctx: Context = mcp.get_context()  # type: ignore[assignment]
         client = get_client_from_context(ctx)
 
-        try:
+        def _do_get_email() -> str:
             try:
-                uid_int = int(uid)
-            except (ValueError, TypeError):
-                return f"Invalid UID '{uid}': must be a numeric value"
+                try:
+                    uid_int = int(uid)
+                except (ValueError, TypeError):
+                    return f"Invalid UID '{uid}': must be a numeric value"
 
-            if uid_int <= 0:
-                return f"Invalid UID '{uid}': must be a positive integer"
+                if uid_int <= 0:
+                    return f"Invalid UID '{uid}': must be a positive integer"
 
-            # Fetch email
-            email_obj = client.fetch_email(uid_int, folder=folder)
+                # Fetch email
+                email_obj = client.fetch_email(uid_int, folder=folder)
 
-            if not email_obj:
-                return f"Email with UID {uid} not found in folder {folder}"
+                if not email_obj:
+                    return f"Email with UID {uid} not found in folder {folder}"
 
-            # Format email as text
-            parts = [
-                f"From: {email_obj.from_}",
-                f"To: {', '.join(str(to) for to in email_obj.to)}",
-            ]
+                # Format email as text
+                parts = [
+                    f"From: {email_obj.from_}",
+                    f"To: {', '.join(str(to) for to in email_obj.to)}",
+                ]
 
-            if email_obj.cc:
-                parts.append(f"Cc: {', '.join(str(cc) for cc in email_obj.cc)}")
+                if email_obj.cc:
+                    parts.append(f"Cc: {', '.join(str(cc) for cc in email_obj.cc)}")
 
-            if email_obj.date:
-                parts.append(f"Date: {email_obj.date.isoformat()}")
+                if email_obj.date:
+                    parts.append(f"Date: {email_obj.date.isoformat()}")
 
-            parts.append(f"Subject: {email_obj.subject}")
-            parts.append(f"Flags: {', '.join(email_obj.flags)}")
+                parts.append(f"Subject: {email_obj.subject}")
+                parts.append(f"Flags: {', '.join(email_obj.flags)}")
 
-            if email_obj.attachments:
-                parts.append(f"Attachments: {len(email_obj.attachments)}")
-                for i, attachment in enumerate(email_obj.attachments, 1):
-                    parts.append(
-                        f"  {i}. {attachment.filename} ({attachment.content_type}, {attachment.size} bytes)"
-                    )
+                if email_obj.attachments:
+                    parts.append(f"Attachments: {len(email_obj.attachments)}")
+                    for i, attachment in enumerate(email_obj.attachments, 1):
+                        parts.append(
+                            f"  {i}. {attachment.filename} ({attachment.content_type}, {attachment.size} bytes)"
+                        )
 
-            parts.append("")  # Empty line before content
+                parts.append("")  # Empty line before content
 
-            # Add email content
-            content = email_obj.content.get_best_content()
-            parts.append(content)
+                # Add email content
+                content = email_obj.content.get_best_content()
+                parts.append(content)
 
-            return "\n".join(parts)
-        except (IMAPClientError, OSError, ValueError) as e:
-            logger.error(f"Error fetching email: {e}")
-            return f"Error: {e}"
-        except Exception:
-            logger.error("Unexpected error fetching email", exc_info=True)
-            return "Error: an unexpected error occurred"
+                return "\n".join(parts)
+            except (IMAPClientError, OSError, ValueError) as e:
+                logger.error(f"Error fetching email: {e}")
+                return f"Error: {e}"
+            except Exception:
+                logger.error("Unexpected error fetching email", exc_info=True)
+                return "Error: an unexpected error occurred"
+
+        return await anyio.to_thread.run_sync(_do_get_email)

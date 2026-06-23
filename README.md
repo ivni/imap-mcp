@@ -37,6 +37,7 @@ The IMAP MCP server is designed to work with Claude or any other MCP-compatible 
   * Proper threading with In-Reply-To and References headers
   * Save drafts to appropriate folders
 * **Search**: Basic search capabilities across folders
+* **Observability**: Opt-in JSON structured logging, per-request correlation IDs, and a Prometheus `/metrics` endpoint (no sensitive data is ever logged or exported)
 * **Interaction Patterns**: Structured patterns for processing emails and learning preferences (planned)
 * **Learning Layer**: Record and analyze user decisions to predict future actions (planned)
 
@@ -147,7 +148,11 @@ All tools carry [MCP ToolAnnotations](https://modelcontextprotocol.io/specificat
 
    Unauthenticated health endpoints are exposed for orchestrators: `GET /health`
    (liveness, always 200) and `GET /ready` (readiness, 200 when IMAP is
-   reachable, else 503). The container `HEALTHCHECK` uses `/health`.
+   reachable, else 503; its result is cached briefly so probes can't hammer the
+   IMAP server with logins). The container `HEALTHCHECK` uses `/health`. A
+   `GET /metrics` endpoint exposes Prometheus metrics (also unauthenticated).
+   These three endpoints bypass auth by design — keep them on your monitoring
+   network rather than exposing them publicly.
 
 4. Connect from Claude Code:
 
@@ -216,6 +221,8 @@ uv run pytest
 
 When running over HTTP (`streamable-http` transport), the server **requires** JWT authentication via an external OIDC provider (Authentik, Keycloak, Auth0, etc.). The server acts as a Resource Server — it validates JWT tokens but does not handle the OAuth flow itself.
 
+Both `OIDC_ISSUER_URL` and `OIDC_AUDIENCE` are **required** for HTTP transport — the server refuses to start without them. `OIDC_AUDIENCE` binds tokens to this server so that a token the issuer minted for a *different* resource server cannot be replayed here (token passthrough / confused-deputy; see [RFC 8707](https://www.rfc-editor.org/rfc/rfc8707)). Set it to the `aud` claim your OIDC provider issues for this server. If your provider genuinely cannot scope tokens per audience, set `OIDC_ALLOW_ANY_AUDIENCE=true` to opt out — this disables audience verification and is **not recommended** for production.
+
 Configure via environment variables in `.env` — see [Environment Variables](#environment-variables) below for all authentication settings.
 
 The `stdio` transport does not use authentication (protected by OS process isolation).
@@ -263,7 +270,8 @@ All environment variables override their YAML config equivalents. Passwords are 
 |----------|----------|---------|-------------|
 | `OIDC_ISSUER_URL` | Yes (HTTP) | — | OIDC provider issuer URL |
 | `OIDC_JWKS_URI` | No | auto-discovered | Explicit JWKS endpoint (skips OIDC discovery) |
-| `OIDC_AUDIENCE` | No | — | Expected JWT audience claim |
+| `OIDC_AUDIENCE` | Yes (HTTP) | — | Expected JWT audience (`aud`) claim. Binds tokens to this server; the HTTP transport refuses to start without it unless `OIDC_ALLOW_ANY_AUDIENCE=true` |
+| `OIDC_ALLOW_ANY_AUDIENCE` | No | `false` | Opt out of the `OIDC_AUDIENCE` requirement (skips audience verification). **Not recommended** — allows tokens minted for other resource servers of the same issuer to be replayed |
 | `OIDC_ALLOW_HTTP` | No | `false` | Allow HTTP OIDC issuer URL (development only) |
 | `MCP_RESOURCE_SERVER_URL` | No | — | Public URL of MCP server for OAuth metadata |
 
@@ -279,6 +287,21 @@ All environment variables override their YAML config equivalents. Passwords are 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `IMAP_MCP_DOMAIN` | No | — | Domain for Traefik reverse proxy routing |
+
+### Observability
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `IMAP_MCP_LOG_FORMAT` | No | `text` | Log output format: `text` (human-readable) or `json` (one JSON object per line, for log aggregators) |
+
+On the `streamable-http` transport the server also assigns a correlation ID to
+every request (reusing an inbound `X-Request-ID` header if present, otherwise
+generating one), echoes it in the `X-Request-ID` response header, and includes
+it on every log line emitted while handling that request. A Prometheus
+`GET /metrics` endpoint exposes request counts/latencies and IMAP session
+state. Like the health probes, `/metrics` is unauthenticated — restrict it to
+your monitoring network. No email content, subjects, addresses, or credentials
+are ever logged or exported, in any format.
 
 ## Security Considerations
 
