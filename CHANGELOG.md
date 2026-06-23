@@ -5,11 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> This project is pre-1.0 (Development Status :: Alpha). No versioned release has
-> been tagged yet, so all changes since the fork are listed under **Unreleased**.
-> The first tagged release will move these entries under a dated `0.1.0` heading.
+> This project is pre-1.0 (Development Status :: Alpha). The initial release,
+> `0.1.0`, collects all changes since the fork; subsequent changes accrue under
+> **Unreleased** until the next tag.
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-06-23
 
 This is a hardened, provider-agnostic fork of
 [non-dirty/imap-mcp](https://github.com/non-dirty/imap-mcp). Gmail-specific code
@@ -73,7 +75,10 @@ plus extensive security hardening were added.
 - Migrated dependency management fully to `uv`; dependencies pinned by hash in
   `uv.lock` and installed with `--frozen` in CI and Docker.
 - Replaced broad `except Exception` handlers with specific exceptions in core
-  paths (#32).
+  paths (#32). The remaining last-resort catch-alls in tool/resource handlers
+  now append the exception type name (e.g. `(KeyError)`) to the user-facing
+  error; the exception message is still withheld so an unexpected error cannot
+  leak email content (#53).
 - Removed dead code: `mcp_protocol.py` (#10), `TASKS_FILE`/`create_task` (#8),
   `get_smtp_client_from_context()` (#31), and the unused `imap_client`
   parameter on `register_tools`/`register_resources` (#55).
@@ -137,4 +142,5 @@ plus extensive security hardening were added.
 - Replaced `assert`-based null checks in production paths with explicit
   `ConnectionError` (#51).
 
-[Unreleased]: https://github.com/ivni/imap-mcp/commits/main
+[Unreleased]: https://github.com/ivni/imap-mcp/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/ivni/imap-mcp/releases/tag/v0.1.0
