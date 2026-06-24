@@ -44,17 +44,21 @@ def register_resources(mcp: FastMCP) -> None:
     @mcp.resource(
         "email://folders",
         title="Email Folders",
-        description="List all available IMAP folders filtered by allowed_folders config",
+        description=(
+            "List the IMAP folders the server may access (already filtered by the "
+            "allowed_folders policy). Use these names as the folder argument for "
+            "email tools and resources."
+        ),
     )
     async def get_folders() -> str:
-        """List all available email folders on the IMAP server.
+        """List all accessible email folders on the IMAP server.
 
-        Returns a JSON array of folder names the server can access, filtered
-        by the allowed_folders configuration. Use these folder names as
-        parameters for other email tools and resources.
+        Returns a JSON array of folder names, filtered by the allowed_folders
+        configuration. Use these folder names as parameters for other email
+        tools and resources.
 
         Returns:
-            JSON-formatted list of folders
+            JSON-formatted list of folder names.
         """
         ctx: Context = mcp.get_context()  # type: ignore[assignment]
         client = get_client_from_context(ctx)
@@ -64,20 +68,25 @@ def register_resources(mcp: FastMCP) -> None:
     @mcp.resource(
         "email://{folder}/list",
         title="List Emails in Folder",
-        description="List the most recent emails in a folder (up to 50, newest first)",
+        description=(
+            "List the most recent emails in a folder (up to 50, newest first) as "
+            "lightweight summaries — UID, sender, subject, date, flags, attachment "
+            "flag — without message bodies."
+        ),
     )
     async def list_emails(folder: str) -> str:
         """List the most recent emails in the specified IMAP folder.
 
         Returns up to 50 email summaries sorted by date (newest first). Each
         summary includes UID, folder, sender, recipients, subject, date, flags,
-        and attachment indicator. Use the UID with other tools to act on emails.
+        and an attachment indicator — but not the body. Read a specific message
+        via the ``email://{folder}/{uid}`` resource using a UID from this list.
 
         Args:
-            folder: Folder name
+            folder: Folder name.
 
         Returns:
-            JSON-formatted list of email summaries
+            JSON-formatted list of email summaries.
         """
         ctx: Context = mcp.get_context()  # type: ignore[assignment]
         client = get_client_from_context(ctx)
@@ -124,20 +133,27 @@ def register_resources(mcp: FastMCP) -> None:
     @mcp.resource(
         "email://search/{query}",
         title="Search Emails",
-        description="Search for emails matching a query across all accessible folders",
+        description=(
+            "Quick email search across all accessible folders. The query is a "
+            "status keyword (all, unseen, seen, today, week, month) or free text. "
+            "For criteria selection (from/to/subject) and pagination, use the "
+            "search_emails tool."
+        ),
     )
     async def search_emails(query: str) -> str:
         """Search for emails matching a query across all accessible IMAP folders.
 
-        Supports predefined searches (all, unseen, seen, today, week, month) and
-        free-text search. Returns up to 10 results per folder, sorted by date
-        (newest first). For more control, use the search_emails tool instead.
+        Supports predefined status searches (all, unseen, seen, today, week,
+        month) and free-text search. Returns up to 10 results per folder, sorted
+        by date (newest first). For control over the match field (from/to/subject)
+        and pagination, use the search_emails tool instead.
 
         Args:
-            query: Search query — predefined keyword or free-text search term
+            query: A status keyword (all, unseen, seen, today, week, month) or a
+                free-text search term.
 
         Returns:
-            JSON-formatted list of email summaries
+            JSON-formatted list of email summaries.
         """
         ctx: Context = mcp.get_context()  # type: ignore[assignment]
         client = get_client_from_context(ctx)
@@ -205,21 +221,25 @@ def register_resources(mcp: FastMCP) -> None:
     @mcp.resource(
         "email://{folder}/{uid}",
         title="Get Email Content",
-        description="Retrieve the full content of a specific email by folder and UID",
+        description=(
+            "Retrieve one email in full by folder and UID: headers (From, To, Cc, "
+            "Date, Subject), flags, attachment list, and the message body. Use a "
+            "UID from a list or search result."
+        ),
     )
     async def get_email(folder: str, uid: str) -> str:
         """Retrieve the full content of a specific email by folder and UID.
 
         Returns the complete email including headers (From, To, Cc, Date,
         Subject), flags, attachment list, and the message body (prefers plain
-        text, falls back to HTML). Use UIDs from list or search results.
+        text, falls back to HTML). Use a UID from a list or search result.
 
         Args:
-            folder: Folder name
-            uid: Email UID (positive integer)
+            folder: Folder name.
+            uid: Email UID — a positive integer.
 
         Returns:
-            Email content in text format
+            Email content as formatted text.
         """
         ctx: Context = mcp.get_context()  # type: ignore[assignment]
         client = get_client_from_context(ctx)

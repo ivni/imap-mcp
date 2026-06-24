@@ -11,6 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- MCP tool input schemas now carry per-parameter detail so client models can
+  call tools correctly without guessing. Every parameter has a `description`;
+  `search_emails.criteria`, `process_email.action` and
+  `process_meeting_invite.availability_mode` are typed as enums (their valid
+  values now appear in the schema, not just in prose); and `uid` parameters are
+  constrained to positive integers (`minimum: 1`). Tool and resource docstrings
+  were tightened with clearer "when to use" guidance (e.g. `move`-to-Trash vs.
+  permanent `delete`, the `search_emails` tool vs. the `email://search/{query}`
+  resource) and now flag the calendar availability check as a mock. No tool
+  names, parameters, defaults, or return shapes changed.
+
 ## [0.1.1] - 2026-06-24
 
 ### Fixed

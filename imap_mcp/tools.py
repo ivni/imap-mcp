@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
 
 import anyio
 from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
@@ -144,22 +144,36 @@ def register_tools(mcp: FastMCP) -> None:
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
     )
     async def draft_meeting_reply_tool(
-        invite_details: Dict[str, Any],
-        availability_status: bool,
+        invite_details: Annotated[
+            Dict[str, Any],
+            Field(
+                description=(
+                    "Meeting invite details, typically the 'details' object returned by "
+                    "identify_meeting_invite_tool. Recognized keys: subject, start_time, "
+                    "end_time, organizer, location."
+                )
+            ),
+        ],
+        availability_status: Annotated[
+            bool,
+            Field(
+                description=(
+                    "True to generate an acceptance reply, False to generate a "
+                    "decline reply."
+                )
+            ),
+        ],
         ctx: Context,
     ) -> Dict[str, str]:
-        """Generate meeting reply text (accept or decline) without saving to the server.
+        """Generate meeting reply text (accept or decline) — preview only.
 
-        Returns reply text and metadata but does NOT save a draft or send anything.
-        Use process_meeting_invite to save the reply as a draft.
-
-        Args:
-            invite_details: Dictionary containing invite details (subject, start_time, end_time, organizer, location)
-            availability_status: Whether the user is available for the meeting (True=available/accept, False=unavailable/decline)
-            ctx: MCP context
+        Returns the reply text and metadata. Does NOT save a draft or send
+        anything, so it is safe to call to preview wording. To check the
+        calendar, generate the reply, and save it as a draft in one step, use
+        process_meeting_invite instead.
 
         Returns:
-            Dictionary with reply text and additional metadata
+            Dictionary with the generated reply text (subject, body) and metadata.
         """
         from imap_mcp.workflows.meeting_reply import generate_meeting_reply_content
 
@@ -171,21 +185,31 @@ def register_tools(mcp: FastMCP) -> None:
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
     )
     async def identify_meeting_invite_tool(
-        folder: str, uid: int, ctx: Context
+        folder: Annotated[
+            str,
+            Field(description='IMAP folder containing the email (e.g. "INBOX").'),
+        ],
+        uid: Annotated[
+            int,
+            Field(
+                ge=1,
+                description=(
+                    "UID of the email to inspect — a positive integer taken from a "
+                    "list or search result."
+                ),
+            ),
+        ],
+        ctx: Context,
     ) -> Dict[str, Any]:
         """Analyze an email to determine if it contains a meeting/calendar invite.
 
-        Fetches the email and inspects content for iCalendar data. If found,
-        extracts subject, organizer, start/end times, and location. Does not
-        modify any server state.
-
-        Args:
-            folder: Email folder name
-            uid: Email UID
-            ctx: MCP context
+        Fetches the email and inspects it for iCalendar (.ics) data. If found,
+        extracts the subject, organizer, start/end times, and location. Read-only:
+        does not modify any server state.
 
         Returns:
-            Dictionary with invite details if it's a meeting invite, or status information if not
+            Dictionary with ``is_invite`` (bool); when true, ``details`` holds the
+            extracted invite fields, otherwise an ``error``/status message.
         """
         from imap_mcp.workflows.invite_parser import identify_meeting_invite_details
 
@@ -211,20 +235,33 @@ def register_tools(mcp: FastMCP) -> None:
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
     )
     async def check_calendar_availability_tool(
-        start_time: str, end_time: str, ctx: Context
+        start_time: Annotated[
+            str,
+            Field(
+                description=(
+                    "Proposed start time in ISO 8601 format, e.g. "
+                    '"2024-01-15T10:00:00Z".'
+                )
+            ),
+        ],
+        end_time: Annotated[
+            str,
+            Field(
+                description=(
+                    "Proposed end time in ISO 8601 format; must be after start_time."
+                )
+            ),
+        ],
+        ctx: Context,
     ) -> Dict[str, Any]:
         """Check calendar availability for a proposed meeting time slot.
 
-        Returns availability status for the specified time range. Currently uses
-        a mock calendar implementation. Times must be ISO 8601 format.
-
-        Args:
-            start_time: Meeting start time (ISO 8601 format, e.g. "2024-01-15T10:00:00Z")
-            end_time: Meeting end time (ISO 8601 format)
-            ctx: MCP context
+        Returns whether the time range is free. NOTE: this is a mock calendar
+        implementation (no real calendar is queried) — results are illustrative
+        and not authoritative.
 
         Returns:
-            Dictionary with availability status and additional information
+            Dictionary with ``available`` (bool) plus a human-readable reason.
         """
         from imap_mcp.workflows.calendar_mock import check_mock_availability
 
@@ -240,31 +277,69 @@ def register_tools(mcp: FastMCP) -> None:
         ),
     )
     async def draft_reply_tool(
-        folder: str,
-        uid: int,
-        reply_body: str,
+        folder: Annotated[
+            str,
+            Field(description="IMAP folder containing the email being replied to."),
+        ],
+        uid: Annotated[
+            int,
+            Field(
+                ge=1,
+                description=(
+                    "UID of the email being replied to — a positive integer from a "
+                    "list or search result."
+                ),
+            ),
+        ],
+        reply_body: Annotated[
+            str,
+            Field(
+                description=(
+                    "Plain-text body of the reply. The original message is quoted "
+                    "automatically beneath it."
+                )
+            ),
+        ],
         ctx: Context,
-        reply_all: bool = False,
-        cc: Optional[List[str]] = None,
-        body_html: Optional[str] = None,
+        reply_all: Annotated[
+            bool,
+            Field(
+                description=(
+                    "If true, reply to the sender plus all original To/Cc recipients; "
+                    "if false, reply only to the sender."
+                )
+            ),
+        ] = False,
+        cc: Annotated[
+            Optional[List[str]],
+            Field(
+                description=(
+                    "Extra Cc recipients as RFC 5322 addresses, e.g. "
+                    '["Jane Doe <jane@example.com>"].'
+                )
+            ),
+        ] = None,
+        body_html: Annotated[
+            Optional[str],
+            Field(
+                description=(
+                    "Optional HTML version of the reply, sent as a multipart/"
+                    "alternative alongside reply_body."
+                )
+            ),
+        ] = None,
     ) -> Dict[str, Any]:
         """Compose a reply to an email and save it as a draft on the IMAP server.
 
-        Creates a MIME reply with proper threading headers (In-Reply-To, References).
-        Supports plain text, optional HTML, reply-all with CC. Requires user
-        confirmation. Additive — creates a new draft without modifying the original.
-
-        Args:
-            folder: Email folder name
-            uid: Email UID
-            reply_body: Reply text content
-            ctx: MCP context
-            reply_all: Whether to reply to all recipients
-            cc: Optional CC recipients
-            body_html: Optional HTML version of the reply
+        Builds a MIME reply with correct threading headers (In-Reply-To,
+        References) so the draft stays in the original conversation. Additive —
+        creates a new draft and never modifies or sends the original. Requires
+        user confirmation. This drafts a free-form reply; for replying to a
+        calendar invite, prefer process_meeting_invite.
 
         Returns:
-            Dictionary with status and the UID of the created draft (None if server lacks UIDPLUS)
+            Dictionary with ``status`` and ``draft_uid`` (None when the server
+            lacks the UIDPLUS extension and cannot report the new UID).
         """
         client = get_client_from_context(ctx)
         error = _validate_tool_folder(client, folder)
@@ -345,25 +420,39 @@ def register_tools(mcp: FastMCP) -> None:
         ),
     )
     async def move_email(
-        folder: str,
-        uid: int,
-        target_folder: str,
+        folder: Annotated[
+            str, Field(description="Source folder the email currently lives in.")
+        ],
+        uid: Annotated[
+            int,
+            Field(
+                ge=1,
+                description=(
+                    "UID of the email to move — a positive integer from a list or "
+                    "search result."
+                ),
+            ),
+        ],
+        target_folder: Annotated[
+            str,
+            Field(
+                description=(
+                    "Destination folder. Must also be in the allowed folders list."
+                )
+            ),
+        ],
         ctx: Context,
     ) -> str:
         """Move an email from one IMAP folder to another.
 
-        Copies to the target folder and deletes from the source. Destructive —
-        the email no longer exists in the original folder. Requires user
-        confirmation. Both folders must be in the allowed folders list.
-
-        Args:
-            folder: Source folder
-            uid: Email UID
-            target_folder: Target folder
-            ctx: MCP context
+        Copies the message to the target folder and deletes it from the source.
+        Destructive — afterwards the email no longer exists in the original
+        folder. Requires user confirmation. Both folders must be in the allowed
+        folders list. Use this (move to a Trash folder) for a recoverable
+        "soft delete"; use delete_email only for permanent removal.
 
         Returns:
-            Success message or error message
+            Success message, or an error message on failure.
         """
         client = get_client_from_context(ctx)
         error = _validate_tool_folder(client, folder)
@@ -409,21 +498,25 @@ def register_tools(mcp: FastMCP) -> None:
         ),
     )
     async def mark_as_read(
-        folder: str,
-        uid: int,
+        folder: Annotated[str, Field(description="Folder containing the email.")],
+        uid: Annotated[
+            int,
+            Field(
+                ge=1,
+                description=(
+                    "UID of the email — a positive integer from a list or search "
+                    "result."
+                ),
+            ),
+        ],
         ctx: Context,
     ) -> str:
         r"""Mark an email as read by setting the IMAP \Seen flag.
 
         Idempotent — marking an already-read email has no additional effect.
 
-        Args:
-            folder: Folder name
-            uid: Email UID
-            ctx: MCP context
-
         Returns:
-            Success message or error message
+            Success message, or an error message on failure.
         """
         client = get_client_from_context(ctx)
         error = _validate_tool_folder(client, folder)
@@ -456,21 +549,25 @@ def register_tools(mcp: FastMCP) -> None:
         ),
     )
     async def mark_as_unread(
-        folder: str,
-        uid: int,
+        folder: Annotated[str, Field(description="Folder containing the email.")],
+        uid: Annotated[
+            int,
+            Field(
+                ge=1,
+                description=(
+                    "UID of the email — a positive integer from a list or search "
+                    "result."
+                ),
+            ),
+        ],
         ctx: Context,
     ) -> str:
         r"""Mark an email as unread by removing the IMAP \Seen flag.
 
         Idempotent — marking an already-unread email has no additional effect.
 
-        Args:
-            folder: Folder name
-            uid: Email UID
-            ctx: MCP context
-
         Returns:
-            Success message or error message
+            Success message, or an error message on failure.
         """
         client = get_client_from_context(ctx)
         error = _validate_tool_folder(client, folder)
@@ -503,23 +600,31 @@ def register_tools(mcp: FastMCP) -> None:
         ),
     )
     async def flag_email(
-        folder: str,
-        uid: int,
+        folder: Annotated[str, Field(description="Folder containing the email.")],
+        uid: Annotated[
+            int,
+            Field(
+                ge=1,
+                description=(
+                    "UID of the email — a positive integer from a list or search "
+                    "result."
+                ),
+            ),
+        ],
         ctx: Context,
-        flag: bool = True,
+        flag: Annotated[
+            bool,
+            Field(
+                description=("True to flag/star the email, False to unflag/unstar it.")
+            ),
+        ] = True,
     ) -> str:
-        r"""Set or remove the IMAP \Flagged flag (star/important marker).
+        r"""Set or remove the IMAP \Flagged flag (the star / important marker).
 
         Pass flag=True to star, flag=False to unstar. Idempotent.
 
-        Args:
-            folder: Folder name
-            uid: Email UID
-            flag: True to flag (star), False to unflag (unstar)
-            ctx: MCP context
-
         Returns:
-            Success message or error message
+            Success message, or an error message on failure.
         """
         client = get_client_from_context(ctx)
         error = _validate_tool_folder(client, folder)
@@ -552,22 +657,28 @@ def register_tools(mcp: FastMCP) -> None:
         ),
     )
     async def delete_email(
-        folder: str,
-        uid: int,
+        folder: Annotated[str, Field(description="Folder containing the email.")],
+        uid: Annotated[
+            int,
+            Field(
+                ge=1,
+                description=(
+                    "UID of the email to delete — a positive integer from a list or "
+                    "search result."
+                ),
+            ),
+        ],
         ctx: Context,
     ) -> str:
         r"""Permanently delete an email from the IMAP server.
 
-        Sets \Deleted flag and expunges. Irreversible. Requires user
-        confirmation. For soft delete, use move_email to move to Trash instead.
-
-        Args:
-            folder: Folder name
-            uid: Email UID
-            ctx: MCP context
+        Sets the \Deleted flag and expunges the folder. IRREVERSIBLE — the
+        message cannot be recovered. Requires user confirmation. Prefer
+        move_email to a Trash folder for a recoverable soft delete; use this only
+        when permanent removal is intended.
 
         Returns:
-            Success message or error message
+            Success message, or an error message on failure.
         """
         client = get_client_from_context(ctx)
         error = _validate_tool_folder(client, folder)
@@ -601,31 +712,77 @@ def register_tools(mcp: FastMCP) -> None:
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
     )
     async def search_emails(
-        query: str,
+        query: Annotated[
+            str,
+            Field(
+                description=(
+                    'Search term. For criteria "text"/"from"/"to"/"subject" this is '
+                    "the text to match. For the status criteria (all/unseen/seen/"
+                    "today/week/month) the query is ignored — pass an empty string."
+                )
+            ),
+        ],
         ctx: Context,
-        folder: Optional[str] = None,
-        criteria: str = "text",
-        limit: int = 10,
-        offset: int = 0,
+        folder: Annotated[
+            Optional[str],
+            Field(
+                description=(
+                    "Folder to search. Omit (null) to search every allowed folder."
+                )
+            ),
+        ] = None,
+        criteria: Annotated[
+            Literal[
+                "text",
+                "from",
+                "to",
+                "subject",
+                "all",
+                "unseen",
+                "seen",
+                "today",
+                "week",
+                "month",
+            ],
+            Field(
+                description=(
+                    'What to match: "text" full-text body/headers; "from"/"to"/'
+                    '"subject" the matching header; "all" every message; "unseen"/'
+                    '"seen" by read state; "today"/"week"/"month" by recency.'
+                )
+            ),
+        ] = "text",
+        limit: Annotated[
+            int,
+            Field(
+                description=(
+                    "Maximum number of results to return after sorting by date "
+                    "(newest first). Must be >= 1."
+                )
+            ),
+        ] = 10,
+        offset: Annotated[
+            int,
+            Field(
+                description=(
+                    "Number of results to skip before returning, for pagination. "
+                    "Must be >= 0."
+                )
+            ),
+        ] = 0,
     ) -> str:
         """Search for emails across one or more IMAP folders.
 
-        Supports text search, sender/recipient/subject filtering, and status
-        filters (seen/unseen/today/week/month). Returns paginated results sorted
-        by date (newest first) with UID, folder, sender, subject, date, flags,
-        and attachment indicator.
-
-        Args:
-            query: Search query
-            folder: Folder to search in (None for all allowed folders)
-            criteria: Search criteria — "text" (full-text), "from", "to",
-                "subject", "all" (list all), "unseen", "seen", "today", "week", "month"
-            limit: Maximum number of results (default 10)
-            offset: Number of results to skip for pagination (default 0)
-            ctx: MCP context
+        Supports full-text search, sender/recipient/subject filtering, and status
+        filters (seen/unseen/today/week/month). Results are gathered across the
+        searched folders, sorted globally by date (newest first), then paginated.
+        Each row carries UID, folder, sender, recipients, subject, date, flags,
+        and an attachment indicator — but not the body. Fetch the
+        ``email://{folder}/{uid}`` resource to read a specific message.
 
         Returns:
-            JSON-formatted search results with pagination metadata
+            JSON object with ``total``, ``offset``, ``limit``, and a ``results``
+            array of email summaries.
         """
         client = get_client_from_context(ctx)
         if folder is not None:
@@ -733,29 +890,57 @@ def register_tools(mcp: FastMCP) -> None:
         ),
     )
     async def process_email(
-        folder: str,
-        uid: int,
-        action: str,
+        folder: Annotated[str, Field(description="Folder containing the email.")],
+        uid: Annotated[
+            int,
+            Field(
+                ge=1,
+                description=(
+                    "UID of the email — a positive integer from a list or search "
+                    "result."
+                ),
+            ),
+        ],
+        action: Annotated[
+            Literal["read", "unread", "flag", "unflag", "move", "delete"],
+            Field(
+                description=(
+                    'Action to perform. "move" requires target_folder; "move" and '
+                    '"delete" are destructive and prompt for user confirmation, the '
+                    "rest apply immediately."
+                )
+            ),
+        ],
         ctx: Context,
-        notes: Optional[str] = None,
-        target_folder: Optional[str] = None,
+        notes: Annotated[
+            Optional[str],
+            Field(
+                description=(
+                    "Optional free-text note recording why the action was taken. "
+                    "Not sent to the server."
+                )
+            ),
+        ] = None,
+        target_folder: Annotated[
+            Optional[str],
+            Field(
+                description=(
+                    'Destination folder; required only when action is "move", '
+                    "ignored otherwise."
+                )
+            ),
+        ] = None,
     ) -> str:
-        """Perform an action on an email: read, unread, flag, unflag, move, or delete.
+        """Perform one action on an email: read, unread, flag, unflag, move, or delete.
 
-        Higher-level tool combining multiple operations. Destructive actions
-        (move, delete) require user confirmation; others execute immediately.
-        Optional notes parameter records the reason for the action.
-
-        Args:
-            folder: Folder name
-            uid: Email UID
-            action: Action to take — "read", "unread", "flag", "unflag", "move", "delete"
-            notes: Optional notes about the decision
-            target_folder: Target folder (required for "move" action)
-            ctx: MCP context
+        A convenience dispatcher over the single-purpose tools, handy when the
+        action is chosen dynamically. Destructive actions (move, delete) require
+        user confirmation; the others execute immediately. When the action is
+        fixed, prefer the dedicated tool (mark_as_read, flag_email, move_email,
+        delete_email) for clearer intent and accurate per-tool annotations.
 
         Returns:
-            Success message or error message
+            Success message, or an error message on failure.
         """
         client = get_client_from_context(ctx)
         error = _validate_tool_folder(client, folder)
@@ -855,30 +1040,50 @@ def register_tools(mcp: FastMCP) -> None:
         ),
     )
     async def process_meeting_invite(
-        folder: str,
-        uid: int,
+        folder: Annotated[
+            str, Field(description="Folder containing the invite email.")
+        ],
+        uid: Annotated[
+            int,
+            Field(
+                ge=1,
+                description=(
+                    "UID of the invite email — a positive integer from a list or "
+                    "search result."
+                ),
+            ),
+        ],
         ctx: Context,
-        availability_mode: str = "random",
+        availability_mode: Annotated[
+            Literal[
+                "random",
+                "always_available",
+                "always_busy",
+                "business_hours",
+                "weekdays",
+            ],
+            Field(
+                description=(
+                    "How the mock calendar decides availability: "
+                    '"random" (~70% available), "always_available", "always_busy", '
+                    '"business_hours" (free 09:00–17:00), or "weekdays" (free Mon–Fri).'
+                )
+            ),
+        ] = "random",
     ) -> dict:
         """Analyze a meeting invite, check availability, and save a draft reply.
 
-        Full workflow: identify invite, check calendar, generate reply, save draft.
-        Requires user confirmation. Additive — creates a new draft without
-        modifying the original email.
+        End-to-end workflow combining the meeting tools. Additive — creates a new
+        draft and never modifies or sends the original email. Requires user
+        confirmation. Availability is decided by a mock calendar (see
+        availability_mode), not a real one.
 
         Steps:
         1. Fetches the email and identifies meeting invite details
-        2. Checks calendar availability for the proposed time
+        2. Checks (mock) calendar availability for the proposed time
         3. Generates an accept or decline reply based on availability
         4. Creates a MIME reply message with proper threading headers
         5. Saves the reply as a draft on the IMAP server
-
-        Args:
-            folder: Folder containing the invite email
-            uid: UID of the invite email
-            ctx: MCP context
-            availability_mode: Mode for availability check — "random",
-                "always_available", "always_busy", "business_hours", "weekdays"
 
         Returns:
             Dictionary with the processing result:
