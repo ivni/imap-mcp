@@ -396,9 +396,10 @@ def register_tools(mcp: FastMCP) -> None:
 
         Builds a MIME reply with correct threading headers (In-Reply-To,
         References) so the draft stays in the original conversation. Additive —
-        creates a new draft and never modifies or sends the original. Requires
-        user confirmation. This drafts a free-form reply; for replying to a
-        calendar invite, prefer process_meeting_invite.
+        creates a new draft and never modifies the original; the reply is saved
+        to your drafts for review, never sent. Requires user confirmation. This
+        drafts a free-form reply; for replying to a calendar invite, prefer
+        process_meeting_invite.
 
         Returns:
             Dictionary with ``status`` and ``draft_uid`` (None when the server
@@ -820,7 +821,8 @@ def register_tools(mcp: FastMCP) -> None:
             Field(
                 description=(
                     "Maximum number of results to return after sorting by date "
-                    "(newest first). Must be >= 1."
+                    "(newest first). Must be >= 1, and offset + limit must not "
+                    "exceed 500."
                 )
             ),
         ] = 10,
@@ -841,11 +843,18 @@ def register_tools(mcp: FastMCP) -> None:
         searched folders, sorted globally by date (newest first), then paginated.
         Each row carries UID, folder, sender, recipients, subject, date, flags,
         and an attachment indicator — but not the body. Fetch the
-        ``email://{folder}/{uid}`` resource to read a specific message.
+        ``email://{folder}/{uid}`` resource to read a specific message. This is
+        the entry point for discovering the ``folder`` and ``uid`` that the
+        action tools (mark/flag/move/delete/reply) require.
+
+        Only folders in the server's allowed list are searched — by default just
+        INBOX (least-privilege default); call ``server_status`` to see the
+        allowed set.
 
         Only the newest ``offset + limit`` messages per folder are fetched (not
         every match), so the cost stays bounded even on a folder with thousands
-        of messages. Ordering is exact by Date when the server supports the IMAP
+        of messages — but ``offset + limit`` must not exceed 500, or the call is
+        rejected. Ordering is exact by Date when the server supports the IMAP
         SORT extension; otherwise it falls back to UID order (arrival time) as a
         date proxy, which matches Date order in the common case.
 
@@ -1245,7 +1254,7 @@ def register_tools(mcp: FastMCP) -> None:
                 )
             ),
         ] = "random",
-    ) -> dict:
+    ) -> Dict[str, Any]:
         """Analyze a meeting invite, check availability, and save a draft reply.
 
         End-to-end workflow combining the meeting tools. Additive — creates a new

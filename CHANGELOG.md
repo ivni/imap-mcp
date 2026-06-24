@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Sharpened MCP tool descriptions so client models can call tools without
+  guessing: `search_emails` now states it is the entry point for discovering
+  `folder`/`uid`, that only allowed folders are searched (default INBOX-only,
+  discoverable via `server_status`), and that `offset + limit` must not exceed
+  500; `server_status` is framed as the folder-discovery call; `draft_reply_tool`
+  makes explicit that the reply is saved to drafts, never sent. No tool names,
+  parameters, defaults, or return shapes changed.
+
 ## [0.3.1] - 2026-06-24
 
 ### Fixed

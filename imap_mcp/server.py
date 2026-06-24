@@ -322,8 +322,10 @@ def create_server(
     def server_status() -> str:
         """Return IMAP MCP server configuration and connection status.
 
-        Shows IMAP host, port, username, SSL settings, allowed folders,
-        and SMTP configuration. Does not reveal passwords.
+        Shows IMAP host, port, username, SSL settings, the allowed folders, and
+        whether SMTP is configured — never revealing passwords. Useful as a first
+        call to discover which folders are accessible, since the other tools
+        reject any folder outside the allowed set (default: INBOX only).
         """
         status = {
             "server": "IMAP MCP",
