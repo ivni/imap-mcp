@@ -1,6 +1,5 @@
 """Tests for MCP tools implementation."""
 
-import json
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Generator
@@ -248,7 +247,7 @@ class TestTools:
 
         # Test searching with default parameters
         result = await search_emails("test query", mock_context)
-        response = json.loads(result)
+        response = result
 
         # Assert client methods were called properly
         mock_client.list_folders.assert_called_once()
@@ -288,7 +287,7 @@ class TestTools:
 
         # Test with invalid criteria
         result = await search_emails("test query", mock_context, criteria="invalid")
-        assert "Invalid search criteria" in result
+        assert "Invalid search criteria" in result["error"]
 
     @pytest.mark.asyncio
     async def test_process_email(
@@ -382,7 +381,7 @@ class TestTools:
         mock_client.search.side_effect = IMAPClientError("Search failed")
         result = await search_emails("test", mock_context)
         # Search should continue with other folders and return empty results
-        response = json.loads(result)
+        response = result
         assert response["results"] == []
 
     @pytest.mark.asyncio
@@ -410,7 +409,7 @@ class TestTools:
 
         mock_client.search.side_effect = RuntimeError("unexpected")
         result = await search_emails("test", mock_context)
-        response = json.loads(result)
+        response = result
         assert response["results"] == []
 
     @pytest.mark.asyncio
@@ -424,7 +423,7 @@ class TestTools:
 
         # Test search_emails with invalid criteria
         result = await search_emails("test", mock_context, criteria="invalid_criteria")
-        assert "Invalid search criteria" in result
+        assert "Invalid search criteria" in result["error"]
 
         # Test process_email with missing target folder for move action
         result = await process_email("INBOX", 123, "move", ctx=mock_context)
@@ -804,7 +803,7 @@ class TestSearchEmailsFolderEnforcement:
             result = await search_emails("test", ctx, folder="Trash")
 
         # The search catches exceptions and continues — result should be empty
-        response = json.loads(result)
+        response = result
         assert response["results"] == []
 
     @pytest.mark.asyncio
@@ -960,7 +959,7 @@ class TestToolFolderValidation:
 
         result = await search_emails("test query", mock_context, folder="BAD\x00FOLDER")
 
-        assert "Invalid folder name" in result
+        assert "Invalid folder name" in result["error"]
         mock_client.search.assert_not_called()
 
     @pytest.mark.asyncio
@@ -1145,18 +1144,14 @@ class TestSearchEmailsPagination:
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
             # First page
-            result1 = json.loads(
-                await search_emails("test", mock_context, limit=5, offset=0)
-            )
+            result1 = await search_emails("test", mock_context, limit=5, offset=0)
             assert result1["total"] == 20
             assert result1["offset"] == 0
             assert result1["limit"] == 5
             assert len(result1["results"]) == 5
 
             # Second page
-            result2 = json.loads(
-                await search_emails("test", mock_context, limit=5, offset=5)
-            )
+            result2 = await search_emails("test", mock_context, limit=5, offset=5)
             assert result2["total"] == 20
             assert result2["offset"] == 5
             assert len(result2["results"]) == 5
@@ -1177,9 +1172,7 @@ class TestSearchEmailsPagination:
         mock_client.list_folders.return_value = ["INBOX"]
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
-            result = json.loads(
-                await search_emails("test", mock_context, limit=10, offset=100)
-            )
+            result = await search_emails("test", mock_context, limit=10, offset=100)
         assert result["total"] == 20
         assert result["offset"] == 100
         assert len(result["results"]) == 0
@@ -1197,7 +1190,7 @@ class TestSearchEmailsPagination:
         mock_client.list_folders.return_value = ["INBOX"]
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
-            result = json.loads(await search_emails("test", mock_context))
+            result = await search_emails("test", mock_context)
         assert result["offset"] == 0
         assert result["total"] == 3
 
@@ -1208,7 +1201,7 @@ class TestSearchEmailsPagination:
         """Test that negative offset returns an error."""
         search_emails = tools["search_emails"]
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
-            result = json.loads(await search_emails("test", mock_context, offset=-1))
+            result = await search_emails("test", mock_context, offset=-1)
         assert "error" in result
         assert result["results"] == []
 
@@ -1219,7 +1212,7 @@ class TestSearchEmailsPagination:
         """Test that zero limit returns an error."""
         search_emails = tools["search_emails"]
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
-            result = json.loads(await search_emails("test", mock_context, limit=0))
+            result = await search_emails("test", mock_context, limit=0)
         assert "error" in result
         assert result["results"] == []
 
@@ -1230,7 +1223,7 @@ class TestSearchEmailsPagination:
         """Test that negative limit returns an error."""
         search_emails = tools["search_emails"]
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
-            result = json.loads(await search_emails("test", mock_context, limit=-5))
+            result = await search_emails("test", mock_context, limit=-5)
         assert "error" in result
         assert result["results"] == []
 
@@ -1301,9 +1294,7 @@ class TestSearchEmailsPagination:
         mock_client.fetch_summaries.side_effect = fetch_side_effect
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
-            result = json.loads(
-                await search_emails("test", mock_context, limit=2, offset=2)
-            )
+            result = await search_emails("test", mock_context, limit=2, offset=2)
 
         assert result["total"] == 10
         # Global date-desc: 10,9,8,7,6,5,4,3,2,1
@@ -1378,7 +1369,7 @@ class TestSearchEmailsBudget:
         mock_client.fetch_summaries.return_value = {1: summary}
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
-            result = json.loads(await search_emails("test", mock_context, folder=None))
+            result = await search_emails("test", mock_context, folder=None)
 
         # Only the first folder is searched (budget check never precedes folder 0).
         assert result["truncated"] is True
@@ -1404,9 +1395,7 @@ class TestSearchEmailsBudget:
         mock_client.fetch_summaries.return_value = {1: summary}
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
-            result = json.loads(
-                await search_emails("test", mock_context, folder="INBOX")
-            )
+            result = await search_emails("test", mock_context, folder="INBOX")
 
         assert "truncated" not in result
         mock_client.list_folders.assert_not_called()
@@ -1425,7 +1414,7 @@ class TestSearchEmailsBudget:
         mock_client.fetch_summaries.return_value = {1: summary}
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
-            result = json.loads(await search_emails("test", mock_context, folder=None))
+            result = await search_emails("test", mock_context, folder=None)
 
         assert "truncated" not in result
         assert "folders_searched" not in result
@@ -1459,7 +1448,7 @@ class TestSearchEmailsBudget:
         mock_client.fetch_summaries.return_value = {1: summary}
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
-            result = json.loads(await search_emails("test", mock_context, folder=None))
+            result = await search_emails("test", mock_context, folder=None)
 
         assert "truncated" not in result  # budget not hit, only an error
         assert result["folders_errored"] == ["Archive"]

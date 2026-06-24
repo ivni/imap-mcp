@@ -1,6 +1,5 @@
 """MCP tools implementation for email operations."""
 
-import json
 import logging
 import os
 import time
@@ -811,7 +810,7 @@ def register_tools(mcp: FastMCP) -> None:
                 )
             ),
         ] = 0,
-    ) -> str:
+    ) -> Dict[str, Any]:
         """Search for emails across one or more IMAP folders.
 
         Supports full-text search, sender/recipient/subject filtering, and status
@@ -827,8 +826,10 @@ def register_tools(mcp: FastMCP) -> None:
         response is flagged ``truncated`` — narrow ``folder`` to search them.
 
         Returns:
-            JSON object with ``total``, ``offset``, ``limit``, and a ``results``
-            array of email summaries. When a multi-folder search did not cover
+            A structured object (not a serialized JSON string) with ``total``,
+            ``offset``, ``limit``, and a ``results`` array of email summaries — or
+            an ``error`` field with empty ``results`` on bad input. When a
+            multi-folder search did not cover
             every folder, extra keys report the partial coverage:
             ``folders_searched`` (folders actually searched), ``truncated: true``
             with ``folders_skipped`` when the wall-clock budget was hit, and
@@ -837,20 +838,29 @@ def register_tools(mcp: FastMCP) -> None:
             coverage is partial.
         """
         client = get_client_from_context(ctx)
+
+        def _error_response(message: str) -> Dict[str, Any]:
+            # Every early-return error mirrors the success response's shape
+            # (total/offset/limit/results) plus an ``error`` key, so callers
+            # parse a single schema. Build a fresh dict (and ``results`` list)
+            # per call to avoid sharing mutable state across returns.
+            return {
+                "total": 0,
+                "offset": offset,
+                "limit": limit,
+                "results": [],
+                "error": message,
+            }
+
         if folder is not None:
             error = _validate_tool_folder(client, folder)
             if error:
-                return error
+                return _error_response(error)
 
-        empty_response = {"total": 0, "offset": offset, "limit": limit, "results": []}
         if offset < 0:
-            return json.dumps(
-                {**empty_response, "error": "offset must be >= 0"}, indent=2
-            )
+            return _error_response("offset must be >= 0")
         if limit <= 0:
-            return json.dumps(
-                {**empty_response, "error": "limit must be > 0"}, indent=2
-            )
+            return _error_response("limit must be > 0")
 
         # Define search criteria
         search_criteria_map = {
@@ -867,7 +877,7 @@ def register_tools(mcp: FastMCP) -> None:
         }
 
         if criteria.lower() not in search_criteria_map:
-            return f"Invalid search criteria: {criteria}"
+            return _error_response(f"Invalid search criteria: {criteria}")
 
         search_criteria = search_criteria_map[criteria.lower()]
 
@@ -988,7 +998,7 @@ def register_tools(mcp: FastMCP) -> None:
             if errored:
                 response["folders_errored"] = errored
 
-        return json.dumps(response, indent=2)
+        return response
 
     @mcp.tool(
         title="Process Email Action",
