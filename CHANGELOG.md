@@ -11,6 +11,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-06-24
+
+### Fixed
+
+- `search_emails` no longer downloads envelopes for an entire folder on every
+  call. The `limit`/`offset` were previously applied only after fetching
+  summaries for up to 500 matching messages, so a large folder (e.g. a 6 000+
+  message INBOX) made a single `fetch_summaries` take 60–80 s — long enough to
+  blow the MCP client's tool-call timeout — and, because that 500-message cap
+  kept the *lowest* UIDs, it returned the *oldest* mail instead of the newest.
+  The tool now fetches summaries for only the newest `offset + limit` messages
+  per folder via the new `ImapClient.search_newest`, which orders results by
+  the server's SORT extension (exact by Date) when available and falls back to
+  UID-descending (arrival-time proxy) otherwise. Searching the latest N emails
+  is now fast and actually returns the newest ones.
+- `search_emails` now orders the merged cross-folder result set by the real
+  instant of each message rather than by the lexicographic text of its ISO-8601
+  date. Comparing the strings misranked timezone-aware dates with differing UTC
+  offsets (e.g. `…T11:00:00+02:00`, which is 09:00 UTC, sorted *after*
+  `…T10:00:00+00:00`), so adjacent messages from different time zones could come
+  back in the wrong order despite the "newest first" contract.
+- `search_emails` now rejects a page whose `offset + limit` exceeds the
+  per-fetch ceiling (`MAX_FETCH_UIDS`, 500) with a clear error instead of
+  silently returning a truncated or empty page whose `total` disagreed with the
+  rows actually returned. Normal pagination is unaffected.
+
 ## [0.3.0] - 2026-06-24
 
 ### Changed
@@ -211,7 +237,8 @@ plus extensive security hardening were added.
 - Replaced `assert`-based null checks in production paths with explicit
   `ConnectionError` (#51).
 
-[Unreleased]: https://github.com/ivni/imap-mcp/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/ivni/imap-mcp/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/ivni/imap-mcp/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/ivni/imap-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ivni/imap-mcp/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/ivni/imap-mcp/compare/v0.1.1...v0.1.2

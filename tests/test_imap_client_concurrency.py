@@ -150,6 +150,8 @@ class TestSynchronizedDecoratorCoverage:
         "list_folders",
         "select_folder",
         "search",
+        "search_newest",
+        "_supports_sort",
         "fetch_email",
         "fetch_emails",
         "fetch_summaries",
@@ -167,6 +169,7 @@ class TestSynchronizedDecoratorCoverage:
         "_validate_uid",
         "_is_folder_allowed",
         "_should_probe",
+        "_resolve_search_criteria",
     )
 
     @pytest.mark.parametrize("method_name", SOCKET_METHODS)

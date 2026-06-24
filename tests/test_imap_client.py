@@ -789,6 +789,95 @@ class TestImapClient:
             # Verify result is correct
             assert result == [4, 5, 6]
 
+    def _connected_client(self, mock_imap_client: MagicMock) -> ImapClient:
+        """Build an ImapClient backed by the mocked imapclient connection."""
+        config = ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+        client = ImapClient(config)
+        mock_imap_client.select_folder.return_value = {b"EXISTS": 10}
+        client.connect()
+        return client
+
+    def test_search_newest_uses_sort_when_available(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """With SORT, ordering is server-side by Date and the page is capped."""
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            client = self._connected_client(mock_imap_client)
+
+            mock_imap_client.has_capability.return_value = True
+            # Server returns matches already newest-first (REVERSE DATE).
+            mock_imap_client.sort.return_value = [50, 40, 30, 20, 10]
+
+            uids, total = client.search_newest("all", folder="INBOX", limit=3)
+
+            mock_imap_client.sort.assert_called_once_with(
+                ["REVERSE", "DATE"], "ALL", charset="UTF-8"
+            )
+            mock_imap_client.search.assert_not_called()
+            assert uids == [50, 40, 30]
+            assert total == 5
+
+    def test_search_newest_falls_back_to_uid_order_without_sort(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """Without SORT, newest is approximated by UID descending."""
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            client = self._connected_client(mock_imap_client)
+
+            mock_imap_client.has_capability.return_value = False
+            mock_imap_client.search.return_value = [3, 1, 2, 5, 4]
+
+            uids, total = client.search_newest("all", folder="INBOX", limit=3)
+
+            mock_imap_client.search.assert_called_once_with("ALL", charset=None)
+            mock_imap_client.sort.assert_not_called()
+            # UID-descending proxy, capped at limit.
+            assert uids == [5, 4, 3]
+            assert total == 5
+
+    def test_search_newest_falls_back_when_sort_raises(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """A SORT that errors degrades to SEARCH rather than failing the call."""
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            client = self._connected_client(mock_imap_client)
+
+            mock_imap_client.has_capability.return_value = True
+            mock_imap_client.sort.side_effect = IMAPClientError("SORT not supported")
+            mock_imap_client.search.return_value = [10, 20]
+
+            uids, total = client.search_newest("all", folder="INBOX", limit=5)
+
+            mock_imap_client.sort.assert_called_once()
+            mock_imap_client.search.assert_called_once_with("ALL", charset=None)
+            assert uids == [20, 10]
+            assert total == 2
+
+    def test_search_newest_limit_none_returns_all(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """limit=None returns every match, still newest-first."""
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            client = self._connected_client(mock_imap_client)
+
+            mock_imap_client.has_capability.return_value = False
+            mock_imap_client.search.return_value = [2, 4, 1, 3]
+
+            uids, total = client.search_newest("all", folder="INBOX")
+
+            assert uids == [4, 3, 2, 1]
+            assert total == 4
+
     def test_fetch_email(
         self, mock_imap_client: MagicMock, test_email_response_data: Dict[bytes, Any]
     ) -> None:

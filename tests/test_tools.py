@@ -9,7 +9,7 @@ import pytest
 from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 from mcp.server.fastmcp import Context, FastMCP
 
-from imap_mcp.imap_client import ImapClient
+from imap_mcp.imap_client import MAX_FETCH_UIDS, ImapClient
 from imap_mcp.models import Email, EmailAddress, EmailContent, EmailSummary
 from imap_mcp.tools import ConfirmationResult, register_tools, require_confirmation
 
@@ -60,6 +60,7 @@ def mock_client(mock_email: Any) -> Any:
     client.delete_email.return_value = True
     client.list_folders.return_value = ["INBOX", "Sent", "Archive", "Trash"]
     client.search.return_value = [1, 2, 3]
+    client.search_newest.return_value = ([1, 2, 3], 3)
     client.fetch_emails.return_value = {1: mock_email, 2: mock_email, 3: mock_email}
     summary = _summary_from(mock_email)
     client.fetch_summaries.return_value = {1: summary, 2: summary, 3: summary}
@@ -251,7 +252,7 @@ class TestTools:
 
         # Assert client methods were called properly
         mock_client.list_folders.assert_called_once()
-        assert mock_client.search.call_count > 0
+        assert mock_client.search_newest.call_count > 0
 
         # Check pagination metadata
         assert "total" in response
@@ -268,7 +269,7 @@ class TestTools:
 
         # Reset mocks
         mock_client.list_folders.reset_mock()
-        mock_client.search.reset_mock()
+        mock_client.search_newest.reset_mock()
         mock_client.fetch_summaries.reset_mock()
 
         # Test searching with specific folder
@@ -276,14 +277,14 @@ class TestTools:
 
         # Assert client methods were called properly
         mock_client.list_folders.assert_not_called()
-        mock_client.search.assert_called_once()
+        mock_client.search_newest.assert_called_once()
 
         # Test with different criteria
         criteria_tests = ["from", "to", "subject", "all", "unseen", "seen"]
         for criteria in criteria_tests:
-            mock_client.search.reset_mock()
+            mock_client.search_newest.reset_mock()
             result = await search_emails("test query", mock_context, criteria=criteria)
-            assert mock_client.search.called
+            assert mock_client.search_newest.called
 
         # Test with invalid criteria
         result = await search_emails("test query", mock_context, criteria="invalid")
@@ -378,7 +379,7 @@ class TestTools:
         assert "Error" in result
 
         # Test search_emails error handling
-        mock_client.search.side_effect = IMAPClientError("Search failed")
+        mock_client.search_newest.side_effect = IMAPClientError("Search failed")
         result = await search_emails("test", mock_context)
         # Search should continue with other folders and return empty results
         response = result
@@ -407,7 +408,7 @@ class TestTools:
         result = await delete_email("INBOX", 123, mock_context)
         assert result == "Error: an unexpected error occurred (RuntimeError)"
 
-        mock_client.search.side_effect = RuntimeError("unexpected")
+        mock_client.search_newest.side_effect = RuntimeError("unexpected")
         result = await search_emails("test", mock_context)
         response = result
         assert response["results"] == []
@@ -741,6 +742,7 @@ class TestSearchEmailsFolderEnforcement:
         """
         client = MagicMock(spec=ImapClient)
         client.search.return_value = [1]
+        client.search_newest.return_value = ([1], 1)
         client.fetch_summaries.return_value = {1: _summary_from(mock_email)}
 
         mcp = MagicMock(spec=FastMCP)
@@ -780,10 +782,10 @@ class TestSearchEmailsFolderEnforcement:
         # search should be called exactly for the allowed folders
         searched_folders = {
             call.kwargs.get("folder", call.args[1] if len(call.args) > 1 else None)
-            for call in client.search.call_args_list
+            for call in client.search_newest.call_args_list
         }
         assert searched_folders == {"INBOX", "Sent"}
-        assert client.search.call_count == 2
+        assert client.search_newest.call_count == 2
 
     @pytest.mark.asyncio
     async def test_search_emails_rejects_disallowed_folder(
@@ -795,7 +797,7 @@ class TestSearchEmailsFolderEnforcement:
 
         # Configure client: only INBOX is allowed
         client.allowed_folders = {"INBOX"}
-        client.search.side_effect = ValueError("Folder 'Trash' is not allowed")
+        client.search_newest.side_effect = ValueError("Folder 'Trash' is not allowed")
 
         ctx = _make_confirmed_context()
 
@@ -829,10 +831,10 @@ class TestSearchEmailsFolderEnforcement:
         # search should be called for all 4 folders
         searched_folders = {
             call.kwargs.get("folder", call.args[1] if len(call.args) > 1 else None)
-            for call in client.search.call_args_list
+            for call in client.search_newest.call_args_list
         }
         assert searched_folders == {"INBOX", "Sent", "Trash", "Drafts"}
-        assert client.search.call_count == 4
+        assert client.search_newest.call_count == 4
 
 
 class TestToolFolderValidation:
@@ -960,7 +962,7 @@ class TestToolFolderValidation:
         result = await search_emails("test query", mock_context, folder="BAD\x00FOLDER")
 
         assert "Invalid folder name" in result["error"]
-        mock_client.search.assert_not_called()
+        mock_client.search_newest.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_process_email_rejects_invalid_target_folder(
@@ -1138,7 +1140,10 @@ class TestSearchEmailsPagination:
     ) -> None:
         """Test that offset skips results correctly."""
         search_emails = tools["search_emails"]
-        mock_client.search.return_value = list(many_emails.keys())
+        mock_client.search_newest.return_value = (
+            list(many_emails.keys()),
+            len(many_emails),
+        )
         mock_client.fetch_summaries.return_value = many_emails
         mock_client.list_folders.return_value = ["INBOX"]
 
@@ -1167,7 +1172,10 @@ class TestSearchEmailsPagination:
     ) -> None:
         """Test that offset beyond total returns empty results."""
         search_emails = tools["search_emails"]
-        mock_client.search.return_value = list(many_emails.keys())
+        mock_client.search_newest.return_value = (
+            list(many_emails.keys()),
+            len(many_emails),
+        )
         mock_client.fetch_summaries.return_value = many_emails
         mock_client.list_folders.return_value = ["INBOX"]
 
@@ -1183,7 +1191,7 @@ class TestSearchEmailsPagination:
     ) -> None:
         """Test that default offset is 0."""
         search_emails = tools["search_emails"]
-        mock_client.search.return_value = [101, 102, 103]
+        mock_client.search_newest.return_value = ([101, 102, 103], 3)
         mock_client.fetch_summaries.return_value = {
             k: v for k, v in many_emails.items() if k in [101, 102, 103]
         }
@@ -1227,25 +1235,14 @@ class TestSearchEmailsPagination:
         assert "error" in result
         assert result["results"] == []
 
-    @pytest.mark.asyncio
-    async def test_multi_folder_pagination_global_date_order(
-        self, tools: Any, mock_client: Any, mock_context: Any
-    ) -> None:
-        """Test that multi-folder search paginates by global date order.
+    @staticmethod
+    def _inverse_uid_folders() -> dict[str, dict[int, EmailSummary]]:
+        """Two folders where FolderB's UID order is the inverse of its dates.
 
-        Regression test for #41: per-folder truncation by UID dropped results
-        that belong on the requested page when sorted globally by date.
-
-        Setup: FolderB has UID order *inverse* to date order (low UID = newest).
-        With offset=2, limit=2 the old per-folder truncation ([:4]) dropped
-        FolderB's UID 1 (the globally newest email), producing wrong results.
+        FolderA: UIDs 101-105, dates Jan 1,3,5,7,9 (UID order == date order).
+        FolderB: UIDs 1-5, dates Jan 10,8,6,4,2 (low UID == newest).
+        Global date-desc across both: 10,9,8,7,6,5,4,3,2,1.
         """
-        search_emails = tools["search_emails"]
-
-        # FolderA: 5 emails, UIDs 101-105, dates Jan 1,3,5,7,9
-        # FolderB: 5 emails, UIDs 1-5, dates INVERSE: UID1=Jan10, UID5=Jan2
-        # Global date-desc: 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
-        # Page (offset=2, limit=2) correct answer: Jan 8, Jan 7
         folder_emails: dict[str, dict[int, EmailSummary]] = {}
 
         folder_a: dict[int, EmailSummary] = {}
@@ -1277,30 +1274,177 @@ class TestSearchEmailsPagination:
                 has_attachments=False,
             )
         folder_emails["FolderB"] = folder_b
+        return folder_emails
 
+    @pytest.mark.asyncio
+    async def test_multi_folder_pagination_global_date_order_with_sort(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Multi-folder search paginates by exact global date order under SORT.
+
+        Regression for #41: results that belong on the requested page must not be
+        dropped when sorted globally by date. ``search_newest`` returns each
+        folder's newest-first candidates (exact by Date when the server supports
+        SORT); the tool merges them and paginates. Even with FolderB's UID order
+        *inverse* to its dates, offset=2/limit=2 yields the globally-correct page.
+        """
+        search_emails = tools["search_emails"]
+        folder_emails = self._inverse_uid_folders()
         mock_client.list_folders.return_value = list(folder_emails.keys())
 
-        def search_side_effect(
-            criteria: Any, folder: str = "INBOX", charset: Any = None
-        ) -> list[int]:
-            return list(folder_emails.get(folder, {}).keys())
+        # A SORT-capable server orders candidates by Date (newest first).
+        def search_newest_sorted(
+            criteria: Any,
+            folder: str = "INBOX",
+            limit: Any = None,
+            charset: Any = None,
+        ) -> tuple[list[int], int]:
+            emails = folder_emails.get(folder, {})
+            ordered = sorted(emails, key=lambda u: emails[u].date, reverse=True)
+            total = len(ordered)
+            if limit:
+                ordered = ordered[:limit]
+            return ordered, total
 
         def fetch_side_effect(
             uids: Any, folder: str = "INBOX"
         ) -> dict[int, EmailSummary]:
             return {u: folder_emails[folder][u] for u in uids}
 
-        mock_client.search.side_effect = search_side_effect
+        mock_client.search_newest.side_effect = search_newest_sorted
         mock_client.fetch_summaries.side_effect = fetch_side_effect
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
             result = await search_emails("test", mock_context, limit=2, offset=2)
 
         assert result["total"] == 10
-        # Global date-desc: 10,9,8,7,6,5,4,3,2,1
-        # offset=2, limit=2 → day 8, day 7
+        # Global date-desc: 10,9,8,7,6,5,4,3,2,1 → offset=2,limit=2 → day 8, day 7
         subjects = [r["subject"] for r in result["results"]]
         assert subjects == ["Email day 8", "Email day 7"]
+
+    @pytest.mark.asyncio
+    async def test_multi_folder_pagination_uid_proxy_without_sort(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Without SORT, per-folder candidates use the UID-order date proxy.
+
+        Documents the accepted trade-off: on servers lacking SORT (e.g. Yandex)
+        ``search_newest`` picks the newest candidates by UID, so a folder whose
+        UID order diverges from its dates can have a genuinely-newer message fall
+        outside the per-folder window. Here FolderB's UID 1 (the globally newest,
+        day 10) is dropped, shifting the offset=2/limit=2 page off the exact
+        answer — the price of bounding the fetch on a non-SORT server.
+        """
+        search_emails = tools["search_emails"]
+        folder_emails = self._inverse_uid_folders()
+        mock_client.list_folders.return_value = list(folder_emails.keys())
+
+        # A non-SORT server: search_newest approximates newest by UID descending.
+        def search_newest_uid_proxy(
+            criteria: Any,
+            folder: str = "INBOX",
+            limit: Any = None,
+            charset: Any = None,
+        ) -> tuple[list[int], int]:
+            emails = folder_emails.get(folder, {})
+            ordered = sorted(emails, reverse=True)  # by UID descending
+            total = len(ordered)
+            if limit:
+                ordered = ordered[:limit]
+            return ordered, total
+
+        def fetch_side_effect(
+            uids: Any, folder: str = "INBOX"
+        ) -> dict[int, EmailSummary]:
+            return {u: folder_emails[folder][u] for u in uids}
+
+        mock_client.search_newest.side_effect = search_newest_uid_proxy
+        mock_client.fetch_summaries.side_effect = fetch_side_effect
+
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = await search_emails("test", mock_context, limit=2, offset=2)
+
+        # total still reflects every match across both folders.
+        assert result["total"] == 10
+        # fetch_count=offset+limit=4. UID-desc candidates: FolderA days [9,7,5,3],
+        # FolderB days [2,4,6,8] (UID 1/day 10 dropped). Merged date-desc:
+        # 9,8,7,6,5,4,3,2 → offset=2,limit=2 → day 7, day 6 (approximate).
+        subjects = [r["subject"] for r in result["results"]]
+        assert subjects == ["Email day 7", "Email day 6"]
+
+    @pytest.mark.asyncio
+    async def test_global_sort_uses_true_instant_across_timezones(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """Cross-folder ordering compares instants, not raw ISO strings.
+
+        Two messages whose wall-clock strings sort one way but whose real
+        instants sort the other (different UTC offsets) must be ordered by the
+        actual instant. ``…T11:00+02:00`` (09:00 UTC) is *older* than
+        ``…T10:00+00:00`` (10:00 UTC) even though it sorts later as text.
+        """
+        search_emails = tools["search_emails"]
+
+        earlier = EmailSummary(  # 09:00 UTC — but "11" sorts after "10" as text
+            uid=1,
+            subject="Earlier instant",
+            from_=EmailAddress(name="S", address="s@test.com"),
+            to=[EmailAddress(name="R", address="r@test.com")],
+            date=datetime(2024, 1, 1, 11, 0, tzinfo=timezone(timedelta(hours=2))),
+            flags=[],
+            has_attachments=False,
+        )
+        later = EmailSummary(  # 10:00 UTC — the genuinely newer message
+            uid=2,
+            subject="Later instant",
+            from_=EmailAddress(name="S", address="s@test.com"),
+            to=[EmailAddress(name="R", address="r@test.com")],
+            date=datetime(2024, 1, 1, 10, 0, tzinfo=timezone.utc),
+            flags=[],
+            has_attachments=False,
+        )
+        emails = {1: earlier, 2: later}
+        mock_client.list_folders.return_value = ["INBOX"]
+        mock_client.search_newest.return_value = ([1, 2], 2)
+        mock_client.fetch_summaries.return_value = emails
+
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = await search_emails("test", mock_context, limit=10, offset=0)
+
+        # Newest-first by real instant: 10:00 UTC before 09:00 UTC.
+        subjects = [r["subject"] for r in result["results"]]
+        assert subjects == ["Later instant", "Earlier instant"]
+
+    @pytest.mark.asyncio
+    async def test_rejects_page_beyond_fetch_ceiling(
+        self, tools: Any, mock_client: Any, mock_context: Any
+    ) -> None:
+        """A page reaching past ``MAX_FETCH_UIDS`` is rejected, not truncated.
+
+        ``offset + limit`` bounds the per-folder fetch and ``fetch_summaries``
+        caps at ``MAX_FETCH_UIDS``; a page past that ceiling cannot be served
+        fully, so the tool returns an error rather than a quietly-incomplete page.
+        """
+        search_emails = tools["search_emails"]
+
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = await search_emails(
+                "test", mock_context, limit=10, offset=MAX_FETCH_UIDS
+            )
+
+        assert "error" in result
+        assert str(MAX_FETCH_UIDS) in result["error"]
+        assert result["results"] == []
+        mock_client.search_newest.assert_not_called()
+
+        # The boundary itself (offset + limit == MAX_FETCH_UIDS) is allowed.
+        mock_client.search_newest.return_value = ([], 0)
+        mock_client.fetch_summaries.return_value = {}
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            ok = await search_emails(
+                "test", mock_context, limit=10, offset=MAX_FETCH_UIDS - 10
+            )
+        assert "error" not in ok
 
 
 class TestSearchEmailsBudget:
@@ -1365,7 +1509,7 @@ class TestSearchEmailsBudget:
         monkeypatch.setenv("IMAP_MCP_SEARCH_BUDGET", "1e-9")
         search_emails = tools["search_emails"]
 
-        mock_client.search.return_value = [1]
+        mock_client.search_newest.return_value = ([1], 1)
         mock_client.fetch_summaries.return_value = {1: summary}
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
@@ -1391,7 +1535,7 @@ class TestSearchEmailsBudget:
         monkeypatch.setenv("IMAP_MCP_SEARCH_BUDGET", "1e-9")
         search_emails = tools["search_emails"]
 
-        mock_client.search.return_value = [1]
+        mock_client.search_newest.return_value = ([1], 1)
         mock_client.fetch_summaries.return_value = {1: summary}
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
@@ -1410,7 +1554,7 @@ class TestSearchEmailsBudget:
     ) -> None:
         """Fast multi-folder search keeps the normal response shape (no extra keys)."""
         search_emails = tools["search_emails"]
-        mock_client.search.return_value = [1]
+        mock_client.search_newest.return_value = ([1], 1)
         mock_client.fetch_summaries.return_value = {1: summary}
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
@@ -1438,13 +1582,16 @@ class TestSearchEmailsBudget:
         search_emails = tools["search_emails"]
 
         def search_by_folder(
-            criteria: Any, folder: str = "INBOX", charset: Any = None
-        ) -> list[int]:
+            criteria: Any,
+            folder: str = "INBOX",
+            limit: Any = None,
+            charset: Any = None,
+        ) -> tuple[list[int], int]:
             if folder == "Archive":
                 raise IMAPClientError("boom")
-            return [1]
+            return [1], 1
 
-        mock_client.search.side_effect = search_by_folder
+        mock_client.search_newest.side_effect = search_by_folder
         mock_client.fetch_summaries.return_value = {1: summary}
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):

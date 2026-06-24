@@ -656,40 +656,140 @@ class ImapClient:
         self.select_folder(folder, readonly=True)
         client = self._get_client()
 
-        resolved_criteria: Union[str, List[Any], Tuple[Any, ...], Sequence[Any]] = (
-            criteria
-        )
-        if isinstance(criteria, str):
-            # Predefined criteria strings
-            criteria_map: Dict[str, Union[str, List[Any]]] = {
-                "all": "ALL",
-                "unseen": "UNSEEN",
-                "seen": "SEEN",
-                "answered": "ANSWERED",
-                "unanswered": "UNANSWERED",
-                "deleted": "DELETED",
-                "undeleted": "UNDELETED",
-                "flagged": "FLAGGED",
-                "unflagged": "UNFLAGGED",
-                "recent": "RECENT",
-                "today": ["SINCE", datetime.now().date()],
-                "yesterday": [
-                    "SINCE",
-                    (datetime.now() - timedelta(days=1)).date(),
-                    "BEFORE",
-                    datetime.now().date(),
-                ],
-                "week": ["SINCE", (datetime.now() - timedelta(days=7)).date()],
-                "month": ["SINCE", (datetime.now() - timedelta(days=30)).date()],
-            }
-
-            if criteria.lower() in criteria_map:
-                resolved_criteria = criteria_map[criteria.lower()]
+        resolved_criteria = self._resolve_search_criteria(criteria)
 
         with _time_op("search", folder):
             results = client.search(resolved_criteria, charset=charset)
         logger.debug(f"Search returned {len(results)} results")
         return list(results)
+
+    def _resolve_search_criteria(
+        self,
+        criteria: Union[str, List[Any], Tuple[Any, ...], Sequence[Any]],
+    ) -> Union[str, List[Any], Tuple[Any, ...], Sequence[Any]]:
+        """Translate a predefined criteria keyword into IMAP search criteria.
+
+        Pure helper (touches no socket): maps a keyword such as ``"all"`` or
+        ``"week"`` to the corresponding IMAP criteria, building the date-relative
+        ones (``today``/``week``/``month``/``yesterday``) against the current date
+        on each call. A non-string criteria, or an unknown keyword, is returned
+        unchanged so callers may pass an explicit criteria list straight through.
+        """
+        if not isinstance(criteria, str):
+            return criteria
+        criteria_map: Dict[str, Union[str, List[Any]]] = {
+            "all": "ALL",
+            "unseen": "UNSEEN",
+            "seen": "SEEN",
+            "answered": "ANSWERED",
+            "unanswered": "UNANSWERED",
+            "deleted": "DELETED",
+            "undeleted": "UNDELETED",
+            "flagged": "FLAGGED",
+            "unflagged": "UNFLAGGED",
+            "recent": "RECENT",
+            "today": ["SINCE", datetime.now().date()],
+            "yesterday": [
+                "SINCE",
+                (datetime.now() - timedelta(days=1)).date(),
+                "BEFORE",
+                datetime.now().date(),
+            ],
+            "week": ["SINCE", (datetime.now() - timedelta(days=7)).date()],
+            "month": ["SINCE", (datetime.now() - timedelta(days=30)).date()],
+        }
+        return criteria_map.get(criteria.lower(), criteria)
+
+    @_synchronized
+    def _supports_sort(self) -> bool:
+        """Whether the server advertises the SORT extension (RFC 5256).
+
+        Capability-based feature detection (never a hostname check) so behavior
+        stays provider-agnostic. Returns False on any capability-query error
+        rather than raising, so a probe failure degrades gracefully to a plain
+        SEARCH instead of failing the operation.
+        """
+        try:
+            client = self._get_client()
+            return bool(client.has_capability("SORT"))
+        except (IMAPClientError, OSError):
+            return False
+
+    @_synchronized
+    def search_newest(
+        self,
+        criteria: Union[str, List[Any], Tuple[Any, ...], Sequence[Any]],
+        folder: str = "INBOX",
+        limit: Optional[int] = None,
+        charset: Optional[str] = None,
+    ) -> Tuple[List[int], int]:
+        """Find matching UIDs newest-first, returning at most ``limit`` of them.
+
+        Returns a ``(uids, total)`` pair where ``uids`` holds the newest matching
+        message UIDs (at most ``limit``, ordered newest-first) and ``total`` is
+        the full number of matches in the folder. Fetching summaries for only
+        these UIDs — instead of every match — is what keeps ``search_emails``
+        from downloading hundreds of envelopes (tens of seconds on a slow
+        server) and blowing the MCP client's tool-call timeout on large
+        mailboxes.
+
+        Ordering is exact by the message Date header when the server advertises
+        the SORT extension (RFC 5256: ``SORT (REVERSE DATE)`` evaluated on the
+        server). When SORT is unavailable (e.g. Yandex), it falls back to a plain
+        SEARCH ordered by UID descending — an arrival-time proxy that matches
+        Date order for the common case but can diverge when messages were
+        imported or appended out of order.
+
+        Args:
+            criteria: Search criteria (keyword such as ``"all"`` / ``"week"`` or
+                an explicit IMAP criteria list).
+            folder: Folder to search in.
+            limit: Maximum number of (newest) UIDs to return. ``None`` or a
+                non-positive value returns all matches, still newest-first.
+            charset: Character set for the search/sort criteria.
+
+        Returns:
+            Tuple of (newest-first UID list capped at ``limit``, total match
+            count).
+
+        Raises:
+            ConnectionError: If not connected and connection fails.
+            IMAPClientError: If the IMAP search/sort fails.
+        """
+        self.select_folder(folder, readonly=True)
+        client = self._get_client()
+        resolved_criteria = self._resolve_search_criteria(criteria)
+
+        # Prefer server-side date ordering so we transfer only the page we need.
+        if self._supports_sort():
+            try:
+                with _time_op("sort", folder):
+                    ordered = client.sort(
+                        ["REVERSE", "DATE"],
+                        resolved_criteria,
+                        charset=charset or "UTF-8",
+                    )
+                ordered_uids = list(ordered)
+                total = len(ordered_uids)
+                if limit is not None and limit > 0:
+                    ordered_uids = ordered_uids[:limit]
+                logger.debug("Sort returned %d results (newest-first)", total)
+                return ordered_uids, total
+            except (IMAPClientError, OSError) as e:
+                # Some servers advertise SORT but reject specific criteria or
+                # charsets; degrade to SEARCH rather than failing the call.
+                logger.info("SORT failed (%s); falling back to SEARCH", e)
+
+        with _time_op("search", folder):
+            results = client.search(resolved_criteria, charset=charset)
+        uids = list(results)
+        total = len(uids)
+        # No SORT: approximate newest-first by UID descending (arrival proxy).
+        newest = sorted(uids, reverse=True)
+        if limit is not None and limit > 0:
+            newest = newest[:limit]
+        logger.debug("Search returned %d results", total)
+        return newest, total
 
     @_synchronized
     def fetch_email(self, uid: int, folder: str = "INBOX") -> Optional[Email]:

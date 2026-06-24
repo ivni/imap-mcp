@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
 
@@ -12,7 +13,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
-from imap_mcp.imap_client import ImapClient
+from imap_mcp.imap_client import MAX_FETCH_UIDS, ImapClient
 from imap_mcp.models import EmailAddress
 from imap_mcp.resources import get_client_from_context
 
@@ -57,6 +58,28 @@ def _search_budget_seconds() -> float:
         )
         return DEFAULT_SEARCH_BUDGET_SECONDS
     return value
+
+
+def _date_sort_key(value: Optional[str]) -> datetime:
+    """Chronological sort key for a stored ISO-8601 ``date`` string.
+
+    ``search_emails`` rows carry ``date`` as ``summary.date.isoformat()``.
+    Sorting those strings lexicographically is *not* chronological once UTC
+    offsets differ — ``…T11:00:00+02:00`` (09:00 UTC) precedes
+    ``…T10:00:00+00:00`` in real time but follows it as text — so we parse back
+    to an instant and normalize any timezone-aware value to naive UTC, leaving
+    every key mutually comparable (a naive and an aware ``datetime`` cannot be
+    compared directly). Missing or unparseable dates sort oldest.
+    """
+    if not value:
+        return datetime.min
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return datetime.min
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
 
 
 def _validate_tool_folder(client: ImapClient, folder: str) -> str | None:
@@ -820,6 +843,12 @@ def register_tools(mcp: FastMCP) -> None:
         and an attachment indicator — but not the body. Fetch the
         ``email://{folder}/{uid}`` resource to read a specific message.
 
+        Only the newest ``offset + limit`` messages per folder are fetched (not
+        every match), so the cost stays bounded even on a folder with thousands
+        of messages. Ordering is exact by Date when the server supports the IMAP
+        SORT extension; otherwise it falls back to UID order (arrival time) as a
+        date proxy, which matches Date order in the common case.
+
         When searching every folder (``folder`` omitted), the fan-out is bounded
         by a wall-clock budget so a slow server cannot exhaust the tool-call
         timeout. If the budget is hit, the remaining folders are skipped and the
@@ -861,6 +890,13 @@ def register_tools(mcp: FastMCP) -> None:
             return _error_response("offset must be >= 0")
         if limit <= 0:
             return _error_response("limit must be > 0")
+        # Each folder fetches only the newest ``offset + limit`` summaries, and
+        # ``fetch_summaries`` itself caps at ``MAX_FETCH_UIDS``. Reject a page
+        # that reaches past that ceiling instead of silently serving a
+        # truncated/empty page whose ``total`` would then disagree with the rows
+        # actually returned. Normal pagination stays far below this bound.
+        if offset + limit > MAX_FETCH_UIDS:
+            return _error_response(f"offset + limit must be <= {MAX_FETCH_UIDS}")
 
         # Define search criteria
         search_criteria_map = {
@@ -917,14 +953,29 @@ def register_tools(mcp: FastMCP) -> None:
                     break
 
                 try:
-                    # Search for emails
-                    uids = client.search(search_criteria, folder=current_folder)
+                    # Only the newest (offset + limit) messages in this folder
+                    # can survive the global sort-by-date + pagination below, so
+                    # fetch summaries for just those instead of every match.
+                    # ``search_newest`` orders by server-side SORT (exact Date)
+                    # when available and by UID-descending otherwise, and also
+                    # returns the full match count. Without this bound a single
+                    # large folder makes fetch_summaries download up to
+                    # MAX_FETCH_UIDS envelopes — tens of seconds on a slow server,
+                    # enough to blow the client's tool-call timeout — and, because
+                    # that truncation keeps the LOWEST UIDs, it would also return
+                    # the OLDEST mail instead of the newest.
+                    fetch_count = offset + limit
+                    newest_uids, match_count = client.search_newest(
+                        search_criteria, folder=current_folder, limit=fetch_count
+                    )
 
                     folder_rows: List[Dict[str, Any]] = []
-                    if uids:
+                    if newest_uids:
                         # Fetch lightweight summaries (envelope/flags/structure)
                         # — never download bodies just to build result rows.
-                        summaries = client.fetch_summaries(uids, folder=current_folder)
+                        summaries = client.fetch_summaries(
+                            newest_uids, folder=current_folder
+                        )
 
                         # Create summaries
                         for uid, summary in summaries.items():
@@ -958,9 +1009,11 @@ def register_tools(mcp: FastMCP) -> None:
                 # Record the folder only once it has fully completed (search +
                 # summary fetch) so ``total``/``results``/``folders_searched``
                 # stay mutually consistent; a folder that raised is tracked in
-                # ``errored`` instead of being silently dropped.
+                # ``errored`` instead of being silently dropped. ``total`` counts
+                # every match in the folder (``match_count``), not just the
+                # newest page actually fetched.
                 results.extend(folder_rows)
-                total_count += len(uids)
+                total_count += match_count
                 searched.append(current_folder)
 
             return results, total_count, searched, skipped, errored
@@ -973,8 +1026,10 @@ def register_tools(mcp: FastMCP) -> None:
             errored,
         ) = await anyio.to_thread.run_sync(_do_search)
 
-        # Sort results by date (newest first)
-        results.sort(key=lambda x: str(x.get("date") or "0"), reverse=True)
+        # Sort results by date (newest first). Compare parsed instants, not the
+        # raw ISO strings: lexicographic ordering misranks timezone-aware dates
+        # whose UTC offsets differ (see ``_date_sort_key``).
+        results.sort(key=lambda x: _date_sort_key(x.get("date")), reverse=True)
 
         # Apply pagination
         results = results[offset : offset + limit]
