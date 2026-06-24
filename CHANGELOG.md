@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-24
+
 ### Added
 
 - DEBUG-level logging can now be enabled with `IMAP_MCP_DEBUG=true`, not only
@@ -196,7 +198,8 @@ plus extensive security hardening were added.
 - Replaced `assert`-based null checks in production paths with explicit
   `ConnectionError` (#51).
 
-[Unreleased]: https://github.com/ivni/imap-mcp/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/ivni/imap-mcp/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ivni/imap-mcp/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/ivni/imap-mcp/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ivni/imap-mcp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ivni/imap-mcp/releases/tag/v0.1.0
