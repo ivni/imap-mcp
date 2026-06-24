@@ -11,6 +11,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- DEBUG-level logging can now be enabled with `IMAP_MCP_DEBUG=true`, not only
+  the `--debug` flag — so deployments can turn it on via the environment without
+  overriding the container's launch command.
+- At DEBUG level, each IMAP network round-trip emits a content-safe timing line
+  (`imap op=<name> folder=<f> status=<ok|error> duration_ms=<n>`) covering
+  `list_folders`, `select_folder`, `search`, `fetch_email`, `fetch_emails`, and
+  `fetch_summaries`. This pinpoints which folder/operation is slow when a search
+  approaches the client's tool-call timeout. The line never contains search
+  criteria, subjects, addresses, or bodies.
+
+### Fixed
+
+- `search_emails` across all folders (`folder` omitted) is now bounded by a
+  wall-clock budget (`IMAP_MCP_SEARCH_BUDGET`, default 60s). Previously the tool
+  searched every allowed folder sequentially with no time limit, so on accounts
+  with many folders or a large mailbox the call could exceed the MCP client's
+  tool-call timeout (≈300s) and fail entirely, returning nothing. When the
+  budget is hit it now stops, returns the results gathered so far, and flags the
+  response `truncated` with `folders_searched`/`folders_skipped` so the caller
+  knows coverage was partial. A folder whose search raises is reported in
+  `folders_errored` rather than being silently omitted from the accounting, and
+  `total` counts only the fully-searched folders. A single explicitly-named
+  folder is unaffected.
+
 ## [0.1.2] - 2026-06-24
 
 ### Changed

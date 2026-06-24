@@ -427,6 +427,46 @@ class TestServer:
                 mock_run_http.assert_called_once_with(mock_server, "0.0.0.0", 9000)
                 mock_server.run.assert_not_called()
 
+    def test_main_debug_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """IMAP_MCP_DEBUG=true enables debug logging without the --debug flag.
+
+        Lets the container/VPS turn on debug via env (the Dockerfile CMD has no
+        --debug) rather than overriding the launch command. parse_args is NOT
+        mocked here so the real argparse default (which reads the env) runs.
+        """
+        monkeypatch.setenv("IMAP_MCP_DEBUG", "true")
+
+        with mock.patch("sys.argv", ["server.py"]):
+            with mock.patch("imap_mcp.server.create_server") as mock_create_server:
+                mock_server = mock.MagicMock()
+                mock_create_server.return_value = mock_server
+
+                with mock.patch(
+                    "imap_mcp.server.configure_logging"
+                ) as mock_configure_logging:
+                    main()
+
+                mock_configure_logging.assert_called_once_with(debug=True)
+                # create_server receives debug as its second positional argument.
+                assert mock_create_server.call_args[0][1] is True
+
+    def test_main_debug_defaults_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Without IMAP_MCP_DEBUG or --debug, debug logging stays off."""
+        monkeypatch.delenv("IMAP_MCP_DEBUG", raising=False)
+
+        with mock.patch("sys.argv", ["server.py"]):
+            with mock.patch("imap_mcp.server.create_server") as mock_create_server:
+                mock_server = mock.MagicMock()
+                mock_create_server.return_value = mock_server
+
+                with mock.patch(
+                    "imap_mcp.server.configure_logging"
+                ) as mock_configure_logging:
+                    main()
+
+                mock_configure_logging.assert_called_once_with(debug=False)
+                assert mock_create_server.call_args[0][1] is False
+
     def test_create_server_with_http_transport(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

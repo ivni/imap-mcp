@@ -1310,3 +1310,159 @@ class TestSearchEmailsPagination:
         # offset=2, limit=2 → day 8, day 7
         subjects = [r["subject"] for r in result["results"]]
         assert subjects == ["Email day 8", "Email day 7"]
+
+
+class TestSearchEmailsBudget:
+    """Tests for the multi-folder search_emails wall-clock budget (folder=None).
+
+    A fan-out across many folders must not hang past the MCP client's tool-call
+    timeout: once the budget is spent, remaining folders are skipped and the
+    response is flagged ``truncated`` rather than failing the whole call.
+    """
+
+    @pytest.fixture
+    def summary(self) -> EmailSummary:
+        return EmailSummary(
+            uid=1,
+            subject="Email",
+            from_=EmailAddress(name="Sender", address="sender@test.com"),
+            to=[EmailAddress(name="Recipient", address="recipient@test.com")],
+            date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            flags=[],
+            has_attachments=False,
+        )
+
+    @pytest.fixture
+    def mock_client(self) -> Any:
+        client = MagicMock(spec=ImapClient)
+        client.list_folders.return_value = ["INBOX", "Sent", "Archive", "Trash"]
+        return client
+
+    @pytest.fixture
+    def tools(self, mock_client: Any) -> Any:
+        mcp = MagicMock(spec=FastMCP)
+        stored_tools: dict[str, Any] = {}
+
+        def mock_tool_decorator(**kwargs: Any) -> Any:
+            def decorator(func: Any) -> Any:
+                stored_tools[func.__name__] = func
+                return func
+
+            return decorator
+
+        mcp.tool = mock_tool_decorator
+        register_tools(mcp)
+        return stored_tools
+
+    @pytest.fixture
+    def mock_context(self) -> Any:
+        return _make_confirmed_context()
+
+    @pytest.mark.asyncio
+    async def test_truncates_when_budget_exceeded(
+        self,
+        tools: Any,
+        mock_client: Any,
+        mock_context: Any,
+        summary: EmailSummary,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When folder=None and the budget is spent, remaining folders are skipped."""
+        # A sub-nanosecond budget is exceeded by the real (tiny) wall-clock time
+        # spent searching the first folder, so the test needs no sleeps and is
+        # deterministic rather than dependent on a sleep racing a timer.
+        monkeypatch.setenv("IMAP_MCP_SEARCH_BUDGET", "1e-9")
+        search_emails = tools["search_emails"]
+
+        mock_client.search.return_value = [1]
+        mock_client.fetch_summaries.return_value = {1: summary}
+
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = json.loads(await search_emails("test", mock_context, folder=None))
+
+        # Only the first folder is searched (budget check never precedes folder 0).
+        assert result["truncated"] is True
+        assert result["folders_searched"] == ["INBOX"]
+        assert result["folders_skipped"] == ["Sent", "Archive", "Trash"]
+
+    @pytest.mark.asyncio
+    async def test_single_folder_not_bounded_by_budget(
+        self,
+        tools: Any,
+        mock_client: Any,
+        mock_context: Any,
+        summary: EmailSummary,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An explicit folder is the caller's choice and is never truncated."""
+        # Even with an effectively-zero budget, an explicit folder is never
+        # truncated — the budget only applies to the folder=None fan-out.
+        monkeypatch.setenv("IMAP_MCP_SEARCH_BUDGET", "1e-9")
+        search_emails = tools["search_emails"]
+
+        mock_client.search.return_value = [1]
+        mock_client.fetch_summaries.return_value = {1: summary}
+
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = json.loads(
+                await search_emails("test", mock_context, folder="INBOX")
+            )
+
+        assert "truncated" not in result
+        mock_client.list_folders.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_truncation_within_budget(
+        self,
+        tools: Any,
+        mock_client: Any,
+        mock_context: Any,
+        summary: EmailSummary,
+    ) -> None:
+        """Fast multi-folder search keeps the normal response shape (no extra keys)."""
+        search_emails = tools["search_emails"]
+        mock_client.search.return_value = [1]
+        mock_client.fetch_summaries.return_value = {1: summary}
+
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = json.loads(await search_emails("test", mock_context, folder=None))
+
+        assert "truncated" not in result
+        assert "folders_searched" not in result
+        assert "folders_skipped" not in result
+        assert "folders_errored" not in result
+
+    @pytest.mark.asyncio
+    async def test_errored_folder_reported_not_counted(
+        self,
+        tools: Any,
+        mock_client: Any,
+        mock_context: Any,
+        summary: EmailSummary,
+    ) -> None:
+        """A folder whose search raises is listed in folders_errored, not dropped.
+
+        Its UIDs must not leak into ``total`` and the surviving folders must
+        still return their results — coverage is reported, never silent. The
+        budget is not hit here, so the response is not flagged ``truncated``.
+        """
+        search_emails = tools["search_emails"]
+
+        def search_by_folder(
+            criteria: Any, folder: str = "INBOX", charset: Any = None
+        ) -> list[int]:
+            if folder == "Archive":
+                raise IMAPClientError("boom")
+            return [1]
+
+        mock_client.search.side_effect = search_by_folder
+        mock_client.fetch_summaries.return_value = {1: summary}
+
+        with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
+            result = json.loads(await search_emails("test", mock_context, folder=None))
+
+        assert "truncated" not in result  # budget not hit, only an error
+        assert result["folders_errored"] == ["Archive"]
+        assert result["folders_searched"] == ["INBOX", "Sent", "Trash"]
+        # 3 successful folders x 1 uid each; the errored folder contributes 0.
+        assert result["total"] == 3

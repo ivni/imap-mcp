@@ -467,7 +467,11 @@ def main() -> None:
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Enable debug logging",
+        # Default from the environment so debug logging can be enabled on the
+        # VPS/container without overriding the launch command (the Dockerfile
+        # CMD has no --debug). The flag still wins when explicitly passed.
+        default=os.environ.get("IMAP_MCP_DEBUG", "").strip().lower() == "true",
+        help="Enable debug logging (env: IMAP_MCP_DEBUG=true)",
     )
     parser.add_argument(
         "--version",

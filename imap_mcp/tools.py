@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import time
 from enum import Enum
 from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
 
@@ -17,6 +18,46 @@ from imap_mcp.models import EmailAddress
 from imap_mcp.resources import get_client_from_context
 
 logger = logging.getLogger(__name__)
+
+# Wall-clock budget (seconds) for a multi-folder ``search_emails`` fan-out. With
+# ``folder=None`` the tool searches every allowed folder in turn; on accounts
+# with many folders or large mailboxes the sequential SEARCH + summary fetches
+# can blow past the MCP client's tool-call timeout, so the whole call fails and
+# returns nothing. Once this budget is spent the remaining folders are skipped
+# and the response is flagged ``truncated`` (with the searched/skipped folder
+# lists) instead of hanging. A single explicitly-named folder is NOT bounded by
+# this — that request is the caller's deliberate choice and the per-operation
+# socket timeout still applies. Overridable via ``IMAP_MCP_SEARCH_BUDGET``.
+DEFAULT_SEARCH_BUDGET_SECONDS = 60.0
+
+
+def _search_budget_seconds() -> float:
+    """Return the multi-folder search budget in seconds (env-overridable).
+
+    Reads ``IMAP_MCP_SEARCH_BUDGET``; falls back to
+    :data:`DEFAULT_SEARCH_BUDGET_SECONDS` when unset, and warns (without
+    failing) on a non-numeric or non-positive value.
+    """
+    raw = os.environ.get("IMAP_MCP_SEARCH_BUDGET")
+    if raw is None:
+        return DEFAULT_SEARCH_BUDGET_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid IMAP_MCP_SEARCH_BUDGET %r; using default %.0fs",
+            raw,
+            DEFAULT_SEARCH_BUDGET_SECONDS,
+        )
+        return DEFAULT_SEARCH_BUDGET_SECONDS
+    if value <= 0:
+        logger.warning(
+            "IMAP_MCP_SEARCH_BUDGET must be > 0 (got %s); using default %.0fs",
+            value,
+            DEFAULT_SEARCH_BUDGET_SECONDS,
+        )
+        return DEFAULT_SEARCH_BUDGET_SECONDS
+    return value
 
 
 def _validate_tool_folder(client: ImapClient, folder: str) -> str | None:
@@ -780,9 +821,20 @@ def register_tools(mcp: FastMCP) -> None:
         and an attachment indicator — but not the body. Fetch the
         ``email://{folder}/{uid}`` resource to read a specific message.
 
+        When searching every folder (``folder`` omitted), the fan-out is bounded
+        by a wall-clock budget so a slow server cannot exhaust the tool-call
+        timeout. If the budget is hit, the remaining folders are skipped and the
+        response is flagged ``truncated`` — narrow ``folder`` to search them.
+
         Returns:
             JSON object with ``total``, ``offset``, ``limit``, and a ``results``
-            array of email summaries.
+            array of email summaries. When a multi-folder search did not cover
+            every folder, extra keys report the partial coverage:
+            ``folders_searched`` (folders actually searched), ``truncated: true``
+            with ``folders_skipped`` when the wall-clock budget was hit, and
+            ``folders_errored`` for any folder whose search raised. ``total``
+            then counts only ``folders_searched`` — a partial total whenever
+            coverage is partial.
         """
         client = get_client_from_context(ctx)
         if folder is not None:
@@ -819,17 +871,46 @@ def register_tools(mcp: FastMCP) -> None:
 
         search_criteria = search_criteria_map[criteria.lower()]
 
-        def _do_search() -> Tuple[List[Dict[str, Any]], int]:
+        def _do_search() -> Tuple[
+            List[Dict[str, Any]], int, List[str], List[str], List[str]
+        ]:
             folders_to_search = [folder] if folder else client.list_folders()
-            results = []
-            total_count = 0
+            # Bound the wall-clock cost of a multi-folder fan-out so a slow
+            # server cannot exhaust the client's tool-call timeout and fail the
+            # whole call. A single explicit folder is the caller's choice and is
+            # left unbounded (the per-operation socket timeout still applies).
+            budget = None if folder is not None else _search_budget_seconds()
+            start = time.monotonic()
 
-            for current_folder in folders_to_search:
+            results: List[Dict[str, Any]] = []
+            total_count = 0
+            searched: List[str] = []
+            skipped: List[str] = []
+            errored: List[str] = []
+
+            for index, current_folder in enumerate(folders_to_search):
+                # Check the budget between folders (never before the first, so
+                # at least one folder is always searched even if misconfigured).
+                if (
+                    budget is not None
+                    and index > 0
+                    and (time.monotonic() - start) >= budget
+                ):
+                    skipped = list(folders_to_search[index:])
+                    logger.warning(
+                        "search_emails budget %.0fs exceeded after %d folder(s); "
+                        "skipping %d remaining folder(s)",
+                        budget,
+                        len(searched),
+                        len(skipped),
+                    )
+                    break
+
                 try:
                     # Search for emails
                     uids = client.search(search_criteria, folder=current_folder)
-                    total_count += len(uids)
 
+                    folder_rows: List[Dict[str, Any]] = []
                     if uids:
                         # Fetch lightweight summaries (envelope/flags/structure)
                         # — never download bodies just to build result rows.
@@ -837,7 +918,7 @@ def register_tools(mcp: FastMCP) -> None:
 
                         # Create summaries
                         for uid, summary in summaries.items():
-                            results.append(
+                            folder_rows.append(
                                 {
                                     "uid": uid,
                                     "folder": current_folder,
@@ -853,16 +934,34 @@ def register_tools(mcp: FastMCP) -> None:
                             )
                 except (IMAPClientError, OSError, ValueError) as e:
                     logger.warning(f"Error searching folder {current_folder}: {e}")
+                    errored.append(current_folder)
+                    continue
                 except Exception:
                     logger.warning(
                         "Unexpected error searching folder %s",
                         current_folder,
                         exc_info=True,
                     )
+                    errored.append(current_folder)
+                    continue
 
-            return results, total_count
+                # Record the folder only once it has fully completed (search +
+                # summary fetch) so ``total``/``results``/``folders_searched``
+                # stay mutually consistent; a folder that raised is tracked in
+                # ``errored`` instead of being silently dropped.
+                results.extend(folder_rows)
+                total_count += len(uids)
+                searched.append(current_folder)
 
-        results, total_count = await anyio.to_thread.run_sync(_do_search)
+            return results, total_count, searched, skipped, errored
+
+        (
+            results,
+            total_count,
+            searched,
+            skipped,
+            errored,
+        ) = await anyio.to_thread.run_sync(_do_search)
 
         # Sort results by date (newest first)
         results.sort(key=lambda x: str(x.get("date") or "0"), reverse=True)
@@ -870,15 +969,26 @@ def register_tools(mcp: FastMCP) -> None:
         # Apply pagination
         results = results[offset : offset + limit]
 
-        return json.dumps(
-            {
-                "total": total_count,
-                "offset": offset,
-                "limit": limit,
-                "results": results,
-            },
-            indent=2,
-        )
+        response: Dict[str, Any] = {
+            "total": total_count,
+            "offset": offset,
+            "limit": limit,
+            "results": results,
+        }
+        # Surface partial coverage explicitly — never silently drop folders.
+        # These keys appear only on a multi-folder fan-out that did not cover
+        # every folder, so the normal (fully covered) response shape is
+        # unchanged. ``total`` then counts only ``folders_searched`` and is a
+        # partial total whenever coverage is partial.
+        if folder is None and (skipped or errored):
+            response["folders_searched"] = searched
+            if skipped:
+                response["truncated"] = True
+                response["folders_skipped"] = skipped
+            if errored:
+                response["folders_errored"] = errored
+
+        return json.dumps(response, indent=2)
 
     @mcp.tool(
         title="Process Email Action",

@@ -44,7 +44,7 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 - `imap_mcp/logging_config.py` — structured logging: `configure_logging()`, JSON/text formatters, correlation-ID `ContextVar` (`set_correlation_id`/`get_correlation_id`)
 - `imap_mcp/metrics.py` — Prometheus instruments + `PrometheusMiddleware` (raw ASGI); exposed via `/metrics`
 - `imap_mcp/imap_client.py` — IMAP operations (connect, search, fetch, move, delete, threading)
-- `imap_mcp/tools.py` — MCP tool registrations with ToolAnnotations (3 tiers: read-only, write non-destructive, write destructive); all tools have title + annotations
+- `imap_mcp/tools.py` — MCP tool registrations with ToolAnnotations (3 tiers: read-only, write non-destructive, write destructive); all tools have title + annotations. `search_emails` with `folder=None` fans out over all allowed folders under a wall-clock budget (`IMAP_MCP_SEARCH_BUDGET`, default 60s); when the budget is hit it stops, flags the response `truncated`, and lists `folders_searched`/`folders_skipped` rather than hanging past the client's tool-call timeout (a folder whose search raises is reported in `folders_errored`, and `total` counts only fully-searched folders, so coverage is never silently partial)
 - `imap_mcp/resources.py` — MCP resource registrations with title/description (folders, list, search, email content)
 - `imap_mcp/models.py` — Data models: Email, EmailAddress, EmailContent, EmailAttachment
 - `imap_mcp/auth.py` — JWT authentication: OIDC provider verification via JWKS (RS256)
@@ -61,6 +61,7 @@ Universal IMAP MCP server for AI assistants. Provider-agnostic: works with any I
 ## Observability
 
 - Logging is configured once via `configure_logging()` (called in `main()`), NOT `logging.basicConfig`. `IMAP_MCP_LOG_FORMAT=json` opts into one-JSON-object-per-line output; default is plaintext
+- DEBUG logging is enabled by `--debug` OR `IMAP_MCP_DEBUG=true` (env default for the flag, so the VPS/container can turn it on without overriding the Dockerfile CMD). At DEBUG, each IMAP network round-trip emits a content-safe timing line via the `_time_op` context manager in `imap_client.py` (`imap op=<name> folder=<f> status=<ok|error> duration_ms=<n>`) — wrap only the `imapclient` socket call, and never log criteria/subjects/addresses/bodies. When adding a socket-touching method whose latency matters, wrap its network call with `_time_op(...)`
 - The JSON formatter serializes ONLY a fixed field set (timestamp, level, logger, message, optional correlation_id/exception) — never arbitrary record attributes — so the "never log email content/subjects/addresses/credentials" invariant holds regardless of format. Preserve this when editing formatters
 - Correlation IDs live in a `ContextVar` (`logging_config._correlation_id`); `CorrelationIdMiddleware` (HTTP only) sets it per request from a sanitized `X-Request-ID` or a generated UUID. `anyio.to_thread.run_sync` copies the context, so offloaded IMAP work keeps the ID
 - HTTP transport runs via `_run_http()` (uvicorn on `build_streamable_http_app(server)`), NOT `server.run()`, so the correlation + Prometheus middleware can wrap the app. Both middlewares are raw ASGI (not `BaseHTTPMiddleware`) so the streaming `/mcp` endpoint is not buffered

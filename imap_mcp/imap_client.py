@@ -7,12 +7,14 @@ import re
 import ssl
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import (
     Any,
     Callable,
     Concatenate,
     Dict,
+    Iterator,
     List,
     Optional,
     ParamSpec,
@@ -207,6 +209,45 @@ def _synchronized(
             return result
 
     return wrapper
+
+
+@contextmanager
+def _time_op(operation: str, folder: Optional[str] = None) -> Iterator[None]:
+    """Log the wall-clock duration of a single IMAP network round-trip at DEBUG.
+
+    Wrap only the ``imapclient`` socket call (not validation or parsing) so the
+    emitted ``duration_ms`` reflects time on the wire — the signal needed to see
+    which folder/operation is slow when a search or fetch approaches the client's
+    tool-call timeout. The log is content-safe by construction: it carries only
+    the operation name, the (non-sensitive) folder name, and the elapsed
+    milliseconds — never criteria, subjects, addresses, or bodies.
+
+    Does nothing measurable unless DEBUG is enabled (``IMAP_MCP_DEBUG=true`` or
+    ``--debug``): the timing and log are skipped entirely otherwise.
+
+    Args:
+        operation: Short operation label (e.g. ``"search"``, ``"fetch_summaries"``).
+        folder: Folder the operation targets, if any.
+    """
+    if not logger.isEnabledFor(logging.DEBUG):
+        yield
+        return
+    start = time.monotonic()
+    status = "ok"
+    try:
+        yield
+    except BaseException:
+        status = "error"
+        raise
+    finally:
+        duration_ms = (time.monotonic() - start) * 1000.0
+        logger.debug(
+            "imap op=%s folder=%s status=%s duration_ms=%.1f",
+            operation,
+            folder if folder is not None else "-",
+            status,
+            duration_ms,
+        )
 
 
 class ImapClient:
@@ -475,7 +516,9 @@ class ImapClient:
         folders = []
         client = self._get_client()
         self.folder_cache.clear()
-        for flags, delimiter, name in client.list_folders():
+        with _time_op("list_folders"):
+            raw_folders = client.list_folders()
+        for flags, delimiter, name in raw_folders:
             if delimiter is not None:
                 if isinstance(delimiter, bytes):
                     self._hierarchy_delimiter = delimiter.decode("utf-8")
@@ -581,7 +624,8 @@ class ImapClient:
         client = self._get_client()
 
         try:
-            result: Dict[str, Any] = client.select_folder(folder, readonly=readonly)
+            with _time_op("select_folder", folder):
+                result: Dict[str, Any] = client.select_folder(folder, readonly=readonly)
             self.current_folder = folder
             logger.debug(f"Selected folder '{folder}'")
             return result
@@ -642,7 +686,8 @@ class ImapClient:
             if criteria.lower() in criteria_map:
                 resolved_criteria = criteria_map[criteria.lower()]
 
-        results = client.search(resolved_criteria, charset=charset)
+        with _time_op("search", folder):
+            results = client.search(resolved_criteria, charset=charset)
         logger.debug(f"Search returned {len(results)} results")
         return list(results)
 
@@ -667,7 +712,8 @@ class ImapClient:
 
         # Fetch message data with BODY.PEEK[] to get all parts including headers
         # Using BODY.PEEK[] instead of RFC822 to avoid setting the \Seen flag
-        result = client.fetch([uid], ["BODY.PEEK[]", "FLAGS"])
+        with _time_op("fetch_email", folder):
+            result = client.fetch([uid], ["BODY.PEEK[]", "FLAGS"])
 
         if not result or uid not in result:
             logger.warning(f"Message with UID {uid} not found in folder {folder}")
@@ -733,7 +779,8 @@ class ImapClient:
 
         # Use BODY.PEEK[] to get full message including all parts and headers
         client = self._get_client()
-        result = client.fetch(uids, ["BODY.PEEK[]", "FLAGS"])
+        with _time_op("fetch_emails", folder):
+            result = client.fetch(uids, ["BODY.PEEK[]", "FLAGS"])
 
         # Parse emails
         emails = {}
@@ -807,7 +854,8 @@ class ImapClient:
         client = self._get_client()
         # ENVELOPE + FLAGS + BODYSTRUCTURE only — no BODY[]/RFC822, so bodies
         # and attachments are never downloaded.
-        result = client.fetch(uids, ["ENVELOPE", "FLAGS", "BODYSTRUCTURE"])
+        with _time_op("fetch_summaries", folder):
+            result = client.fetch(uids, ["ENVELOPE", "FLAGS", "BODYSTRUCTURE"])
 
         summaries: Dict[int, EmailSummary] = {}
         for uid, message_data in result.items():

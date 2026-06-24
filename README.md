@@ -243,6 +243,7 @@ All environment variables override their YAML config equivalents. Passwords are 
 | `IMAP_TLS_CA_BUNDLE` | No | system default | Path to custom CA bundle (PEM) for IMAP TLS |
 | `IMAP_TIMEOUT` | No | `30` | Socket timeout in seconds for IMAP operations (must be > 0) |
 | `IMAP_ALLOWED_FOLDERS` | No | `INBOX` | Comma-separated folder whitelist; empty string = unrestricted |
+| `IMAP_MCP_SEARCH_BUDGET` | No | `60` | Wall-clock budget (seconds) for a `search_emails` fan-out across all folders (`folder` omitted). When exceeded, remaining folders are skipped and the result is flagged `truncated`. Does not bound a single explicitly-named folder |
 
 ### SMTP Connection (optional — falls back to IMAP values)
 
@@ -293,6 +294,7 @@ All environment variables override their YAML config equivalents. Passwords are 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `IMAP_MCP_LOG_FORMAT` | No | `text` | Log output format: `text` (human-readable) or `json` (one JSON object per line, for log aggregators) |
+| `IMAP_MCP_DEBUG` | No | `false` | Set `true` to enable DEBUG-level logging (equivalent to the `--debug` flag). At DEBUG, each IMAP operation logs a content-safe timing line (`imap op=… folder=… status=… duration_ms=…`) to show which folder/operation is slow |
 
 On the `streamable-http` transport the server also assigns a correlation ID to
 every request (reusing an inbound `X-Request-ID` header if present, otherwise
