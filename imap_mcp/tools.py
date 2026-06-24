@@ -674,23 +674,24 @@ def register_tools(mcp: FastMCP) -> None:
                     total_count += len(uids)
 
                     if uids:
-                        # Fetch emails
-                        emails = client.fetch_emails(uids, folder=current_folder)
+                        # Fetch lightweight summaries (envelope/flags/structure)
+                        # — never download bodies just to build result rows.
+                        summaries = client.fetch_summaries(uids, folder=current_folder)
 
                         # Create summaries
-                        for uid, email_obj in emails.items():
+                        for uid, summary in summaries.items():
                             results.append(
                                 {
                                     "uid": uid,
                                     "folder": current_folder,
-                                    "from": str(email_obj.from_),
-                                    "to": [str(to) for to in email_obj.to],
-                                    "subject": email_obj.subject,
-                                    "date": email_obj.date.isoformat()
-                                    if email_obj.date
+                                    "from": str(summary.from_),
+                                    "to": [str(to) for to in summary.to],
+                                    "subject": summary.subject,
+                                    "date": summary.date.isoformat()
+                                    if summary.date
                                     else None,
-                                    "flags": email_obj.flags,
-                                    "has_attachments": len(email_obj.attachments) > 0,
+                                    "flags": summary.flags,
+                                    "has_attachments": summary.has_attachments,
                                 }
                             )
                 except (IMAPClientError, OSError, ValueError) as e:

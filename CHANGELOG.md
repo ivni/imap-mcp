@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `search_emails` (and the `email://{folder}/list` / `email://search/{query}`
+  resources) no longer download full message bodies and attachments just to
+  build result rows. They now fetch only `ENVELOPE`, `FLAGS` and
+  `BODYSTRUCTURE` via the new `ImapClient.fetch_summaries`, transferring
+  kilobytes instead of (potentially hundreds of) megabytes. Previously, a
+  folder with many or large unread messages could stream data steadily for
+  minutes — never tripping the per-read socket timeout — until the MCP
+  client's own tool-call timeout (≈300s) aborted the call.
+
 ## [0.1.0] - 2026-06-23
 
 This is a hardened, provider-agnostic fork of

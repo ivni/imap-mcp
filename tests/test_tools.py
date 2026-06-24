@@ -11,8 +11,23 @@ from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped
 from mcp.server.fastmcp import Context, FastMCP
 
 from imap_mcp.imap_client import ImapClient
-from imap_mcp.models import Email, EmailAddress, EmailContent
+from imap_mcp.models import Email, EmailAddress, EmailContent, EmailSummary
 from imap_mcp.tools import ConfirmationResult, register_tools, require_confirmation
+
+
+def _summary_from(email: Email, has_attachments: bool = False) -> EmailSummary:
+    """Build an EmailSummary mirroring an Email fixture (search/list use these)."""
+    return EmailSummary(
+        uid=email.uid if email.uid is not None else 0,
+        from_=email.from_,
+        to=email.to,
+        subject=email.subject,
+        date=email.date,
+        flags=email.flags,
+        has_attachments=bool(email.attachments),
+        folder=email.folder,
+    )
+
 
 # --- Shared fixtures ---
 
@@ -47,6 +62,8 @@ def mock_client(mock_email: Any) -> Any:
     client.list_folders.return_value = ["INBOX", "Sent", "Archive", "Trash"]
     client.search.return_value = [1, 2, 3]
     client.fetch_emails.return_value = {1: mock_email, 2: mock_email, 3: mock_email}
+    summary = _summary_from(mock_email)
+    client.fetch_summaries.return_value = {1: summary, 2: summary, 3: summary}
     client.fetch_email.return_value = mock_email
     return client
 
@@ -253,7 +270,7 @@ class TestTools:
         # Reset mocks
         mock_client.list_folders.reset_mock()
         mock_client.search.reset_mock()
-        mock_client.fetch_emails.reset_mock()
+        mock_client.fetch_summaries.reset_mock()
 
         # Test searching with specific folder
         result = await search_emails("test query", mock_context, folder="INBOX")
@@ -725,7 +742,7 @@ class TestSearchEmailsFolderEnforcement:
         """
         client = MagicMock(spec=ImapClient)
         client.search.return_value = [1]
-        client.fetch_emails.return_value = {1: mock_email}
+        client.fetch_summaries.return_value = {1: _summary_from(mock_email)}
 
         mcp = MagicMock(spec=FastMCP)
         stored_tools: dict[str, Any] = {}
@@ -1072,19 +1089,18 @@ class TestSearchEmailsPagination:
 
     @pytest.fixture
     def many_emails(self) -> Any:
-        """Create multiple mock emails with different dates."""
+        """Create multiple mock summaries with different dates."""
         emails = {}
         for i in range(20):
             uid = 100 + i
-            emails[uid] = Email(
+            emails[uid] = EmailSummary(
                 uid=uid,
-                message_id=f"<msg{i}@test.com>",
                 subject=f"Email {i}",
                 from_=EmailAddress(name=f"Sender {i}", address=f"sender{i}@test.com"),
                 to=[EmailAddress(name="Recipient", address="recipient@test.com")],
                 date=datetime(2024, 1, 1, tzinfo=timezone.utc) + timedelta(days=i),
                 flags=[],
-                attachments=[],
+                has_attachments=False,
             )
         return emails
 
@@ -1124,7 +1140,7 @@ class TestSearchEmailsPagination:
         """Test that offset skips results correctly."""
         search_emails = tools["search_emails"]
         mock_client.search.return_value = list(many_emails.keys())
-        mock_client.fetch_emails.return_value = many_emails
+        mock_client.fetch_summaries.return_value = many_emails
         mock_client.list_folders.return_value = ["INBOX"]
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
@@ -1157,7 +1173,7 @@ class TestSearchEmailsPagination:
         """Test that offset beyond total returns empty results."""
         search_emails = tools["search_emails"]
         mock_client.search.return_value = list(many_emails.keys())
-        mock_client.fetch_emails.return_value = many_emails
+        mock_client.fetch_summaries.return_value = many_emails
         mock_client.list_folders.return_value = ["INBOX"]
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
@@ -1175,7 +1191,7 @@ class TestSearchEmailsPagination:
         """Test that default offset is 0."""
         search_emails = tools["search_emails"]
         mock_client.search.return_value = [101, 102, 103]
-        mock_client.fetch_emails.return_value = {
+        mock_client.fetch_summaries.return_value = {
             k: v for k, v in many_emails.items() if k in [101, 102, 103]
         }
         mock_client.list_folders.return_value = ["INBOX"]
@@ -1237,37 +1253,35 @@ class TestSearchEmailsPagination:
         # FolderB: 5 emails, UIDs 1-5, dates INVERSE: UID1=Jan10, UID5=Jan2
         # Global date-desc: 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
         # Page (offset=2, limit=2) correct answer: Jan 8, Jan 7
-        folder_emails: dict[str, dict[int, Email]] = {}
+        folder_emails: dict[str, dict[int, EmailSummary]] = {}
 
-        folder_a: dict[int, Email] = {}
+        folder_a: dict[int, EmailSummary] = {}
         for i in range(5):
             uid = 101 + i
             day = 1 + i * 2  # days 1, 3, 5, 7, 9
-            folder_a[uid] = Email(
+            folder_a[uid] = EmailSummary(
                 uid=uid,
-                message_id=f"<a{uid}@test.com>",
                 subject=f"Email day {day}",
                 from_=EmailAddress(name="Sender", address="s@test.com"),
                 to=[EmailAddress(name="R", address="r@test.com")],
                 date=datetime(2024, 1, day, tzinfo=timezone.utc),
                 flags=[],
-                attachments=[],
+                has_attachments=False,
             )
         folder_emails["FolderA"] = folder_a
 
-        folder_b: dict[int, Email] = {}
+        folder_b: dict[int, EmailSummary] = {}
         for i in range(5):
             uid = 1 + i
             day = 10 - i * 2  # UID1=day10, UID2=day8, …, UID5=day2
-            folder_b[uid] = Email(
+            folder_b[uid] = EmailSummary(
                 uid=uid,
-                message_id=f"<b{uid}@test.com>",
                 subject=f"Email day {day}",
                 from_=EmailAddress(name="Sender", address="s@test.com"),
                 to=[EmailAddress(name="R", address="r@test.com")],
                 date=datetime(2024, 1, day, tzinfo=timezone.utc),
                 flags=[],
-                attachments=[],
+                has_attachments=False,
             )
         folder_emails["FolderB"] = folder_b
 
@@ -1278,11 +1292,13 @@ class TestSearchEmailsPagination:
         ) -> list[int]:
             return list(folder_emails.get(folder, {}).keys())
 
-        def fetch_side_effect(uids: Any, folder: str = "INBOX") -> dict[int, Email]:
+        def fetch_side_effect(
+            uids: Any, folder: str = "INBOX"
+        ) -> dict[int, EmailSummary]:
             return {u: folder_emails[folder][u] for u in uids}
 
         mock_client.search.side_effect = search_side_effect
-        mock_client.fetch_emails.side_effect = fetch_side_effect
+        mock_client.fetch_summaries.side_effect = fetch_side_effect
 
         with patch("imap_mcp.tools.get_client_from_context", return_value=mock_client):
             result = json.loads(

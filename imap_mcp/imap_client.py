@@ -26,9 +26,130 @@ import imapclient  # type: ignore[import-untyped]
 from imapclient.exceptions import IMAPClientError  # type: ignore[import-untyped]
 
 from imap_mcp.config import ImapConfig, create_ssl_context
-from imap_mcp.models import Email
+from imap_mcp.models import Email, EmailAddress, EmailSummary, decode_mime_header
 
 logger = logging.getLogger(__name__)
+
+
+def _bytes_to_str(value: Any) -> str:
+    """Decode a (possibly bytes) IMAP atom to str without MIME-word decoding.
+
+    Used for the ASCII-ish ENVELOPE address parts (mailbox/host). Falls back
+    to latin-1 so malformed 8-bit data never raises.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8")
+        except UnicodeDecodeError:
+            return value.decode("latin-1", errors="replace")
+    return str(value)
+
+
+def _decode_header_bytes(value: Any) -> str:
+    """Decode an ENVELOPE header byte string, resolving MIME encoded-words.
+
+    ENVELOPE subjects and address display names arrive as raw header bytes
+    (often RFC 2047 ``=?utf-8?...?=`` encoded-words). This converts to str and
+    runs the same MIME decoding used for full-message headers so summaries
+    show human-readable text.
+    """
+    return decode_mime_header(_bytes_to_str(value))
+
+
+def _envelope_addresses(
+    addrs: Optional[Sequence[Any]],
+) -> List[EmailAddress]:
+    """Convert a tuple of imapclient ENVELOPE ``Address`` objects to models.
+
+    Skips RFC 3501 group-syntax markers (entries with neither an address nor a
+    name). Returns an empty list when *addrs* is falsy (header absent).
+    """
+    if not addrs:
+        return []
+    result: List[EmailAddress] = []
+    for addr in addrs:
+        mailbox = _bytes_to_str(getattr(addr, "mailbox", None))
+        host = _bytes_to_str(getattr(addr, "host", None))
+        if mailbox and host:
+            address = f"{mailbox}@{host}"
+        else:
+            address = mailbox or host or ""
+        name = _decode_header_bytes(getattr(addr, "name", None))
+        if not address and not name:
+            # Group-syntax start/end marker — not a real address.
+            continue
+        result.append(EmailAddress(name=name, address=address))
+    return result
+
+
+def _part_is_attachment(part: Any) -> bool:
+    """Whether a single (non-multipart) BODYSTRUCTURE part is an attachment.
+
+    Mirrors ``Email.from_message``'s attachment detection using only structure
+    metadata: a part is treated as an attachment when its top-level MIME type
+    is ``image``/``application`` (matching ``Email.from_message`` exactly — not
+    ``audio``/``video``, so the list-row flag agrees with what opening the
+    message yields), when it carries a ``name``/``filename`` parameter, or when
+    it has an ``attachment``/``inline`` Content-Disposition. Never raises.
+    """
+    try:
+        maintype = part[0]
+        if isinstance(maintype, bytes):
+            maintype = maintype.decode("ascii", errors="replace")
+        if (maintype or "").lower() in ("image", "application"):
+            return True
+
+        # NAME parameter in the content-type parameter list (index 2),
+        # a flat tuple of alternating key/value byte strings.
+        params = part[2] if len(part) > 2 else None
+        if isinstance(params, (tuple, list)):
+            for token in params:
+                if isinstance(token, bytes) and token.lower() in (b"name", b"filename"):
+                    return True
+
+        # Content-Disposition extension data — a 2-element
+        # (disp-type, disp-params) structure, e.g.
+        # (b"attachment", (b"filename", b"doc.pdf")) or (b"inline", NIL).
+        # Match only that exact shape so a body-fld-lang list like
+        # (b"attachment",) or other extension fields can't false-trigger.
+        for item in part:
+            if (
+                isinstance(item, (tuple, list))
+                and len(item) == 2
+                and isinstance(item[0], bytes)
+                and item[0].lower() in (b"attachment", b"inline")
+                and isinstance(item[1], (tuple, list, type(None)))
+            ):
+                return True
+    except (IndexError, AttributeError, TypeError):
+        return False
+    return False
+
+
+def _bodystructure_has_attachments(body: Any) -> bool:
+    """Detect attachments from a fetched BODYSTRUCTURE without bodies.
+
+    Recurses into multipart structures and applies ``_part_is_attachment`` to
+    each leaf part. Returns False for ``None`` or on any parse error so a
+    malformed structure can never break a search/list.
+    """
+    if body is None:
+        return False
+    try:
+        is_multipart = getattr(body, "is_multipart", None)
+        if is_multipart is None:
+            is_multipart = bool(body) and isinstance(body[0], list)
+        if is_multipart:
+            for part in body[0]:
+                if _bodystructure_has_attachments(part):
+                    return True
+            return False
+        return _part_is_attachment(body)
+    except (IndexError, AttributeError, TypeError):
+        return False
+
 
 # Regex pattern for IMAP-significant characters that must be rejected in folder names.
 # Prevents IMAP command injection via crafted folder names.
@@ -633,6 +754,95 @@ class ImapClient:
             emails[uid] = email_obj
 
         return emails
+
+    @_synchronized
+    def fetch_summaries(
+        self,
+        uids: List[int],
+        folder: str = "INBOX",
+        limit: Optional[int] = None,
+    ) -> Dict[int, EmailSummary]:
+        """Fetch lightweight message summaries WITHOUT downloading bodies.
+
+        Fetches only ``ENVELOPE``, ``FLAGS`` and ``BODYSTRUCTURE`` — the data a
+        search/list result row needs (sender, recipients, subject, date, flags,
+        attachment indicator). Unlike :meth:`fetch_emails`, it never transfers
+        message bodies or attachments, so listing or searching a folder with
+        many (or large) messages moves kilobytes instead of hundreds of
+        megabytes. This is what keeps ``search_emails`` / ``list_emails`` from
+        blocking until the client's tool-call timeout on large mailboxes.
+
+        Args:
+            uids: List of email UIDs.
+            folder: Folder to fetch from.
+            limit: Maximum number of summaries to fetch.
+
+        Returns:
+            Dictionary mapping UIDs to EmailSummary objects.
+
+        Raises:
+            ValueError: If any uid is not a positive integer.
+            ConnectionError: If not connected and connection fails.
+        """
+        for uid in uids:
+            self._validate_uid(uid)
+
+        # Enforce the same upper bound as fetch_emails to prevent DoS.
+        if len(uids) > MAX_FETCH_UIDS:
+            logger.warning(
+                "Truncating summary fetch from %d to %d UIDs (MAX_FETCH_UIDS limit)",
+                len(uids),
+                MAX_FETCH_UIDS,
+            )
+            uids = uids[:MAX_FETCH_UIDS]
+
+        self.select_folder(folder, readonly=True)
+
+        if limit is not None and limit > 0:
+            uids = uids[:limit]
+
+        if not uids:
+            return {}
+
+        client = self._get_client()
+        # ENVELOPE + FLAGS + BODYSTRUCTURE only — no BODY[]/RFC822, so bodies
+        # and attachments are never downloaded.
+        result = client.fetch(uids, ["ENVELOPE", "FLAGS", "BODYSTRUCTURE"])
+
+        summaries: Dict[int, EmailSummary] = {}
+        for uid, message_data in result.items():
+            envelope = message_data.get(b"ENVELOPE")
+            flags = message_data.get(b"FLAGS", ())
+            bodystructure = message_data.get(b"BODYSTRUCTURE")
+
+            str_flags = [
+                f.decode("utf-8") if isinstance(f, bytes) else f for f in flags
+            ]
+
+            if envelope is not None:
+                from_list = _envelope_addresses(envelope.from_)
+                from_ = from_list[0] if from_list else EmailAddress(name="", address="")
+                to = _envelope_addresses(envelope.to)
+                subject = _decode_header_bytes(envelope.subject)
+                date = envelope.date
+            else:
+                from_ = EmailAddress(name="", address="")
+                to = []
+                subject = ""
+                date = None
+
+            summaries[uid] = EmailSummary(
+                uid=uid,
+                folder=folder,
+                from_=from_,
+                to=to,
+                subject=subject,
+                date=date,
+                flags=str_flags,
+                has_attachments=_bodystructure_has_attachments(bodystructure),
+            )
+
+        return summaries
 
     @_synchronized
     def fetch_thread(self, uid: int, folder: str = "INBOX") -> List[Email]:

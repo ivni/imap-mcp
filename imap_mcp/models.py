@@ -402,3 +402,26 @@ class Email:
             f"Attachments: {len(self.attachments)}"
             f"{thread_info}"
         )
+
+
+@dataclass
+class EmailSummary:
+    """Lightweight message summary for search/list result rows.
+
+    Carries only the fields needed to render a result row — sender,
+    recipients, subject, date, flags, and whether the message has
+    attachments. Unlike :class:`Email`, it holds NO body or attachment
+    content, so it can be produced from a cheap IMAP ``ENVELOPE`` /
+    ``FLAGS`` / ``BODYSTRUCTURE`` fetch without downloading message bodies.
+
+    Produced by :meth:`imap_mcp.imap_client.ImapClient.fetch_summaries`.
+    """
+
+    uid: int
+    from_: EmailAddress
+    to: List[EmailAddress]
+    subject: str
+    date: Optional[datetime] = None
+    flags: List[str] = field(default_factory=list)
+    has_attachments: bool = False
+    folder: Optional[str] = None

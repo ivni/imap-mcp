@@ -41,7 +41,7 @@ class TestResources:
         # Mock search
         mock_client.search.return_value = [101, 102, 103]
 
-        # Mock fetch_emails
+        # Mock fetch_summaries (search/list build rows from summaries)
         emails = {}
         for uid in [101, 102, 103]:
             email = mock.MagicMock()
@@ -50,9 +50,9 @@ class TestResources:
             email.subject = f"Test Email {uid}"
             email.date.isoformat.return_value = "2023-01-01T12:00:00"
             email.flags = ["\\Seen"]
-            email.attachments = []
+            email.has_attachments = False
             emails[uid] = email
-        mock_client.fetch_emails.return_value = emails
+        mock_client.fetch_summaries.return_value = emails
 
         # Mock fetch_email
         email = mock.MagicMock()
@@ -148,7 +148,7 @@ class TestResources:
 
         # Verify client methods were called
         mock_imap_client.search.assert_called_once()
-        mock_imap_client.fetch_emails.assert_called_once()
+        mock_imap_client.fetch_summaries.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_search_emails(
@@ -185,7 +185,7 @@ class TestResources:
 
         # Verify client methods were called
         assert mock_imap_client.search.call_count >= 1
-        assert mock_imap_client.fetch_emails.call_count >= 1
+        assert mock_imap_client.fetch_summaries.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_get_email(

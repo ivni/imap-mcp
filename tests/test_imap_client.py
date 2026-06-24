@@ -9,10 +9,20 @@ from imapclient.exceptions import (  # type: ignore[import-untyped]
     IMAPClientAbortError,
     IMAPClientError,
 )
+from imapclient.response_types import (  # type: ignore[import-untyped]
+    Address,
+    BodyData,
+    Envelope,
+)
 
 from imap_mcp.config import ImapConfig
-from imap_mcp.imap_client import _FOLDER_CACHE_TTL_SECONDS, MAX_FETCH_UIDS, ImapClient
-from imap_mcp.models import Email
+from imap_mcp.imap_client import (
+    _FOLDER_CACHE_TTL_SECONDS,
+    MAX_FETCH_UIDS,
+    ImapClient,
+    _part_is_attachment,
+)
+from imap_mcp.models import Email, EmailSummary
 
 
 class TestImapClient:
@@ -1754,6 +1764,238 @@ class TestFetchLimits:
             fetched_uids = call_args[0][0]
             assert len(fetched_uids) == 10
             assert fetched_uids == small_uid_list
+
+
+# BODYSTRUCTURE fragments for building fetch_summaries responses.
+_TEXT_PART = (b"TEXT", b"PLAIN", (b"CHARSET", b"UTF-8"), None, None, b"7BIT", 100, 5)
+_PDF_PART = (b"APPLICATION", b"PDF", (b"NAME", b"doc.pdf"), None, None, b"BASE64", 2000)
+
+
+def _make_envelope(
+    subject: bytes = b"Test Subject",
+    date: Any = None,
+    from_name: bytes = b"Sender Name",
+    mailbox: bytes = b"sender",
+    host: bytes = b"example.com",
+) -> Envelope:
+    """Build an imapclient ENVELOPE for fetch_summaries tests."""
+    from_addr = Address(name=from_name, route=None, mailbox=mailbox, host=host)
+    to_addr = Address(
+        name=b"Recipient", route=None, mailbox=b"rcpt", host=b"example.com"
+    )
+    return Envelope(
+        date=date,
+        subject=subject,
+        from_=(from_addr,),
+        sender=(from_addr,),
+        reply_to=(from_addr,),
+        to=(to_addr,),
+        cc=None,
+        bcc=None,
+        in_reply_to=b"",
+        message_id=b"<msg@example.com>",
+    )
+
+
+class TestFetchSummaries:
+    """Test fetch_summaries — lightweight envelope/structure fetch (no bodies)."""
+
+    @staticmethod
+    def _config() -> ImapConfig:
+        return ImapConfig(
+            host="imap.example.com",
+            port=993,
+            username="test@example.com",
+            password="password",
+            use_ssl=True,
+        )
+
+    def test_fetch_summaries_fields_and_no_body_download(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """Summaries are built from ENVELOPE/FLAGS/BODYSTRUCTURE only."""
+        client = ImapClient(self._config())
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            mock_imap_client.select_folder.return_value = {b"EXISTS": 5}
+            mock_imap_client.fetch.return_value = {
+                42: {
+                    b"ENVELOPE": _make_envelope(date=datetime(2023, 1, 1, 12, 0, 0)),
+                    b"FLAGS": (b"\\Seen",),
+                    b"BODYSTRUCTURE": BodyData.create(_TEXT_PART),
+                }
+            }
+
+            client.connect()
+            summaries = client.fetch_summaries([42], folder="INBOX")
+
+            # Selected read-only and fetched ONLY lightweight items — crucially
+            # no BODY[]/RFC822, so message bodies are never downloaded.
+            mock_imap_client.select_folder.assert_called_once_with(
+                "INBOX", readonly=True
+            )
+            mock_imap_client.fetch.assert_called_once_with(
+                [42], ["ENVELOPE", "FLAGS", "BODYSTRUCTURE"]
+            )
+
+            assert set(summaries) == {42}
+            summary = summaries[42]
+            assert isinstance(summary, EmailSummary)
+            assert summary.uid == 42
+            assert summary.folder == "INBOX"
+            assert summary.subject == "Test Subject"
+            assert summary.from_.name == "Sender Name"
+            assert summary.from_.address == "sender@example.com"
+            assert [a.address for a in summary.to] == ["rcpt@example.com"]
+            assert summary.flags == ["\\Seen"]
+            assert summary.has_attachments is False
+            assert summary.date == datetime(2023, 1, 1, 12, 0, 0)
+
+    def test_fetch_summaries_detects_attachments(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """A multipart message with a non-text part is flagged has_attachments."""
+        client = ImapClient(self._config())
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            mock_imap_client.select_folder.return_value = {b"EXISTS": 5}
+            mock_imap_client.fetch.return_value = {
+                7: {
+                    b"ENVELOPE": _make_envelope(),
+                    b"FLAGS": (),
+                    b"BODYSTRUCTURE": BodyData.create(
+                        (_TEXT_PART, _PDF_PART, b"MIXED")
+                    ),
+                }
+            }
+
+            client.connect()
+            summaries = client.fetch_summaries([7], folder="INBOX")
+
+            assert summaries[7].has_attachments is True
+
+    def test_fetch_summaries_decodes_mime_subject(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """RFC 2047 encoded-word subjects are decoded to human-readable text."""
+        client = ImapClient(self._config())
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            mock_imap_client.select_folder.return_value = {b"EXISTS": 5}
+            mock_imap_client.fetch.return_value = {
+                9: {
+                    b"ENVELOPE": _make_envelope(subject=b"=?utf-8?q?Caf=C3=A9?="),
+                    b"FLAGS": (),
+                    b"BODYSTRUCTURE": BodyData.create(_TEXT_PART),
+                }
+            }
+
+            client.connect()
+            summaries = client.fetch_summaries([9], folder="INBOX")
+
+            assert summaries[9].subject == "Café"
+
+    def test_fetch_summaries_truncates_large_uid_list(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """UID lists exceeding MAX_FETCH_UIDS are truncated before fetch."""
+        client = ImapClient(self._config())
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            mock_imap_client.select_folder.return_value = {b"EXISTS": 600}
+            mock_imap_client.fetch.return_value = {}
+
+            client.connect()
+            client.fetch_summaries(list(range(1, 601)), folder="INBOX")
+
+            fetched_uids = mock_imap_client.fetch.call_args[0][0]
+            assert fetched_uids == list(range(1, MAX_FETCH_UIDS + 1))
+
+    def test_fetch_summaries_applies_limit(self, mock_imap_client: MagicMock) -> None:
+        """The limit argument caps how many UIDs are fetched."""
+        client = ImapClient(self._config())
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            mock_imap_client.select_folder.return_value = {b"EXISTS": 10}
+            mock_imap_client.fetch.return_value = {}
+
+            client.connect()
+            client.fetch_summaries([1, 2, 3, 4, 5], folder="INBOX", limit=2)
+
+            assert mock_imap_client.fetch.call_args[0][0] == [1, 2]
+
+    def test_fetch_summaries_rejects_invalid_uid(
+        self, mock_imap_client: MagicMock
+    ) -> None:
+        """Non-positive UIDs are rejected before any IMAP call."""
+        client = ImapClient(self._config())
+
+        with patch("imapclient.IMAPClient") as mock_client_class:
+            mock_client_class.return_value = mock_imap_client
+            client.connect()
+
+            with pytest.raises(ValueError, match="positive integer"):
+                client.fetch_summaries([1, 0, 3], folder="INBOX")
+
+
+class TestPartIsAttachment:
+    """BODYSTRUCTURE attachment detection, kept in sync with Email.from_message."""
+
+    def test_image_and_application_parts_are_attachments(self) -> None:
+        image = (b"IMAGE", b"PNG", (b"NAME", b"logo.png"), None, None, b"BASE64", 100)
+        assert _part_is_attachment(image) is True
+        assert _part_is_attachment(_PDF_PART) is True
+
+    def test_audio_video_not_flagged_by_maintype_alone(self) -> None:
+        # Email.from_message only treats image/* and application/* as
+        # attachments (not audio/video), so a bare audio/video part with no
+        # name parameter or disposition must NOT be flagged — otherwise the
+        # list-row has_attachments flag would disagree with the opened message.
+        audio = (b"AUDIO", b"MPEG", None, None, None, b"BASE64", 100)
+        video = (b"VIDEO", b"MP4", None, None, None, b"BASE64", 100)
+        assert _part_is_attachment(audio) is False
+        assert _part_is_attachment(video) is False
+
+    def test_attachment_disposition_on_text_part_detected(self) -> None:
+        # text/calendar, no image/app type and no name param — only the
+        # Content-Disposition extension can flag it as an attachment.
+        part = (
+            b"TEXT",
+            b"CALENDAR",
+            (b"CHARSET", b"UTF-8"),
+            None,
+            None,
+            b"7BIT",
+            100,
+            5,
+            None,
+            (b"ATTACHMENT", (b"FILENAME", b"invite.ics")),
+            None,
+        )
+        assert _part_is_attachment(part) is True
+
+    def test_body_language_does_not_false_trigger_as_disposition(self) -> None:
+        # body-fld-lang of ("attachment",) is a 1-tuple, not a
+        # (disp-type, disp-params) disposition — it must not be misread.
+        part = (
+            b"TEXT",
+            b"PLAIN",
+            (b"CHARSET", b"UTF-8"),
+            None,
+            None,
+            b"7BIT",
+            100,
+            5,
+            None,
+            None,
+            (b"attachment",),
+        )
+        assert _part_is_attachment(part) is False
 
 
 class TestReconnection:

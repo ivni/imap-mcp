@@ -152,6 +152,7 @@ class TestSynchronizedDecoratorCoverage:
         "search",
         "fetch_email",
         "fetch_emails",
+        "fetch_summaries",
         "fetch_thread",
         "mark_email",
         "move_email",

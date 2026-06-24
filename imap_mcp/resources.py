@@ -91,24 +91,23 @@ def register_resources(mcp: FastMCP) -> None:
                 # the LLM with too much context
                 uids = sorted(uids, reverse=True)[:50]
 
-                # Fetch emails
-                emails = client.fetch_emails(uids, folder=folder)
+                # Fetch lightweight summaries (envelope/flags/structure) — never
+                # download message bodies just to list a folder.
+                fetched = client.fetch_summaries(uids, folder=folder)
 
                 # Create summaries
                 summaries: List[Dict[str, Any]] = []
-                for uid, email_obj in emails.items():
+                for uid, summary in fetched.items():
                     summaries.append(
                         {
                             "uid": uid,
                             "folder": folder,
-                            "from": str(email_obj.from_),
-                            "to": [str(to) for to in email_obj.to],
-                            "subject": email_obj.subject,
-                            "date": email_obj.date.isoformat()
-                            if email_obj.date
-                            else None,
-                            "flags": email_obj.flags,
-                            "has_attachments": len(email_obj.attachments) > 0,
+                            "from": str(summary.from_),
+                            "to": [str(to) for to in summary.to],
+                            "subject": summary.subject,
+                            "date": summary.date.isoformat() if summary.date else None,
+                            "flags": summary.flags,
+                            "has_attachments": summary.has_attachments,
                         }
                     )
 
@@ -169,23 +168,24 @@ def register_resources(mcp: FastMCP) -> None:
                     uids = sorted(uids, reverse=True)[:10]
 
                     if uids:
-                        # Fetch emails
-                        emails = client.fetch_emails(uids, folder=folder)
+                        # Fetch lightweight summaries (envelope/flags/structure)
+                        # — never download bodies just to build result rows.
+                        fetched = client.fetch_summaries(uids, folder=folder)
 
                         # Create summaries
-                        for uid, email_obj in emails.items():
+                        for uid, summary in fetched.items():
                             results.append(
                                 {
                                     "uid": uid,
                                     "folder": folder,
-                                    "from": str(email_obj.from_),
-                                    "to": [str(to) for to in email_obj.to],
-                                    "subject": email_obj.subject,
-                                    "date": email_obj.date.isoformat()
-                                    if email_obj.date
+                                    "from": str(summary.from_),
+                                    "to": [str(to) for to in summary.to],
+                                    "subject": summary.subject,
+                                    "date": summary.date.isoformat()
+                                    if summary.date
                                     else None,
-                                    "flags": email_obj.flags,
-                                    "has_attachments": len(email_obj.attachments) > 0,
+                                    "flags": summary.flags,
+                                    "has_attachments": summary.has_attachments,
                                 }
                             )
                 except (IMAPClientError, OSError, ValueError) as e:
