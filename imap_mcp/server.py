@@ -177,6 +177,21 @@ def create_server(
         server_kwargs["host"] = host
         server_kwargs["port"] = port
 
+        # Deliver tool results as a single JSON HTTP response instead of an SSE
+        # stream. Codex's streamable-HTTP MCP client (rmcp) does not recover
+        # after its session goes stale: once the SSE channel returns 401/404
+        # ("Session not found") — in our deployment when an OIDC access token
+        # expires on the long-lived ``GET /mcp`` stream — every subsequent
+        # ``tools/call`` hangs until the client's ~300s deadline
+        # (openai/codex#12869, #13969; modelcontextprotocol/rust-sdk#688).
+        # Returning plain JSON removes the dependency on that stale-prone SSE
+        # stream. Spec-compliant clients accept either form via ``Accept``
+        # negotiation (Claude works with both over the same endpoint), so this
+        # is safe to default on; opt out with IMAP_MCP_HTTP_JSON_RESPONSE=false.
+        server_kwargs["json_response"] = os.environ.get(
+            "IMAP_MCP_HTTP_JSON_RESPONSE", "true"
+        ).strip().lower() not in ("false", "0", "no", "off")
+
         # JWT auth via OIDC provider (required for HTTP transport)
         oidc_issuer = os.environ.get("OIDC_ISSUER_URL")
         if not oidc_issuer:

@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-06-25
+
+### Fixed
+
+- The streamable-HTTP transport now returns tool results as a single JSON HTTP
+  response instead of an SSE stream (`json_response=True`). Codex's
+  streamable-HTTP MCP client does not recover after its session goes stale: once
+  the SSE channel returns 401/404 ("Session not found") — in our deployment when
+  an OIDC access token expires on the long-lived `GET /mcp` stream — every
+  subsequent `tools/call` hangs until the client's ~300s deadline
+  (`timed out awaiting tools/call after 299.99s`), even though the server
+  computed and sent the result in a few seconds (openai/codex#12869, #13969;
+  modelcontextprotocol/rust-sdk#688). Delivering plain JSON removes the
+  dependency on that stale-prone SSE stream. Spec-compliant clients negotiate
+  either form via `Accept` (Claude works with both over the same endpoint), so
+  this defaults on; set `IMAP_MCP_HTTP_JSON_RESPONSE=false` to restore SSE.
+  This is unrelated to response size — 0.3.1 already made searches fast
+  server-side; the surviving failure was purely transport.
+
 ### Changed
 
 - Sharpened MCP tool descriptions so client models can call tools without
@@ -247,7 +266,8 @@ plus extensive security hardening were added.
 - Replaced `assert`-based null checks in production paths with explicit
   `ConnectionError` (#51).
 
-[Unreleased]: https://github.com/ivni/imap-mcp/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/ivni/imap-mcp/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/ivni/imap-mcp/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/ivni/imap-mcp/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/ivni/imap-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ivni/imap-mcp/compare/v0.1.2...v0.2.0

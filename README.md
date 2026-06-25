@@ -276,6 +276,12 @@ All environment variables override their YAML config equivalents. Passwords are 
 | `OIDC_ALLOW_HTTP` | No | `false` | Allow HTTP OIDC issuer URL (development only) |
 | `MCP_RESOURCE_SERVER_URL` | No | — | Public URL of MCP server for OAuth metadata |
 
+### HTTP transport
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `IMAP_MCP_HTTP_JSON_RESPONSE` | No | `true` | Return tool results as a single JSON HTTP response instead of an SSE stream. Defaults on to avoid a [Codex](https://github.com/openai/codex/issues/12869) streamable-HTTP bug where a stale MCP session wedges every later `tools/call` until its ~300s deadline. Set `false` to restore SSE-stream responses |
+
 ### Security
 
 | Variable | Required | Default | Description |

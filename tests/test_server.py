@@ -654,6 +654,59 @@ class TestServerOIDCAuth:
 
                 assert isinstance(server._token_verifier, OIDCJWTVerifier)
 
+    @pytest.mark.parametrize(
+        "value",
+        [None, "true", "TRUE", "1", "yes", "on", "", "  ", "anything"],
+    )
+    def test_http_json_response_default_on(
+        self, monkeypatch: pytest.MonkeyPatch, value: Any
+    ) -> None:
+        """HTTP transport returns JSON responses unless explicitly opted out.
+
+        Returning tool results as a single JSON HTTP body — rather than over the
+        per-session SSE stream — sidesteps Codex's stale-session bug where a
+        401/404 on the SSE channel wedges every subsequent tools/call until its
+        ~300s deadline (openai/codex#12869). Spec-compliant clients negotiate
+        either form via Accept, so this is safe to default on. Anything that is
+        not a recognized falsy token — including unset (``None``) — keeps JSON on.
+        """
+        monkeypatch.setenv(
+            "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
+        )
+        monkeypatch.setenv("OIDC_AUDIENCE", "my-mcp-server")
+        monkeypatch.setenv("OIDC_JWKS_URI", "https://auth.example.com/jwks/")
+        if value is None:
+            monkeypatch.delenv("IMAP_MCP_HTTP_JSON_RESPONSE", raising=False)
+        else:
+            monkeypatch.setenv("IMAP_MCP_HTTP_JSON_RESPONSE", value)
+
+        with mock.patch(
+            "imap_mcp.server.load_config", return_value=self._mock_config()
+        ):
+            server = create_server(transport="streamable-http")
+            assert server.settings.json_response is True
+
+    @pytest.mark.parametrize(
+        "value",
+        ["false", "FALSE", "False", "0", "no", "off", "  off  "],
+    )
+    def test_http_json_response_env_opt_out(
+        self, monkeypatch: pytest.MonkeyPatch, value: str
+    ) -> None:
+        """A recognized falsy token (case/whitespace-insensitive) restores SSE."""
+        monkeypatch.setenv(
+            "OIDC_ISSUER_URL", "https://auth.example.com/application/o/test/"
+        )
+        monkeypatch.setenv("OIDC_AUDIENCE", "my-mcp-server")
+        monkeypatch.setenv("OIDC_JWKS_URI", "https://auth.example.com/jwks/")
+        monkeypatch.setenv("IMAP_MCP_HTTP_JSON_RESPONSE", value)
+
+        with mock.patch(
+            "imap_mcp.server.load_config", return_value=self._mock_config()
+        ):
+            server = create_server(transport="streamable-http")
+            assert server.settings.json_response is False
+
     def test_missing_issuer_raises_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that ValueError is raised when OIDC_ISSUER_URL is missing for HTTP."""
         monkeypatch.delenv("OIDC_ISSUER_URL", raising=False)
